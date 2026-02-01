@@ -1,0 +1,25 @@
+# macOS
+.DS_Store
+*.swp
+
+# Build
+build/
+dist/
+*.app
+
+# Dependencies
+node_modules/
+.build/
+
+# IDE
+.idea/
+.vscode/
+*.xcworkspace/
+*.xcuserdata/
+
+# Environment
+.env
+.env.local
+
+# Logs
+*.log
