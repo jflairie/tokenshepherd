@@ -1,37 +1,62 @@
 # TokenShepherd
 
-> Mac menu bar app for Claude Code usage monitoring, efficiency coaching, and cost optimization.
+Anthropic doesn't want you to understand your Claude Code usage. Here's why.
 
-**Status:** Research & Validation Phase
+## The Uncomfortable Truth
+
+When you hit your quota unexpectedly, you have three options:
+1. Wait for reset (Anthropic: neutral)
+2. Upgrade Pro → Max for $180/month more (Anthropic: happy)
+3. Understand your usage and optimize (Anthropic: loses money)
+
+They will never build detailed usage monitoring. It's against their interests.
 
 ## The Problem
 
-Claude Pro/Max users are frustrated by opaque usage limits. They hit quotas unexpectedly, don't understand what's consuming their tokens, and often upgrade tiers blindly.
+From Reddit, Discord, and GitHub — real complaints:
 
-**Anthropic won't fix this** — their incentive is for you to upgrade, not optimize.
+> "Hit 100% in 10-15 minutes"
 
-## The Solution
+> "Ran out in 2 hours"
 
-A lightweight Mac menu bar app that:
-- Shows real-time usage and pace
-- Alerts before you hit limits
-- Breaks down cost by session
-- Teaches efficiency patterns
-- Recommends when to use Opus vs Sonnet
+> "$200/month on Max and still hitting limits"
 
-**Value prop:** Stay on Pro instead of upgrading to Max. Save $180/month.
+The usage bar fills. You don't know why. You don't know what's eating your tokens. You don't know if Opus was worth it for that task or if Sonnet would've been fine.
+
+## What This Is
+
+A Mac menu bar app that sits between you and your quota:
+
+- **Pace indicator**: "At this rate, you'll hit your limit in 3.5 hours. Reset: Sunday 1pm."
+- **Session breakdown**: Which conversations are burning tokens
+- **Context warnings**: "This session is at 142k context. Starting fresh would save ~40% on next requests."
+- **Model recommendations**: When Opus is worth it, when Sonnet is enough
+
+## The Math
+
+| Without TokenShepherd | With TokenShepherd |
+|-----------------------|--------------------|
+| Keep hitting limits → Upgrade to Max ($200/mo) | Understand usage → Stay on Pro ($20/mo) |
+| Annual cost: $2,400 | Annual cost: $240 + $79 app = $319 |
+| **You save: $0** | **You save: $2,081/year** |
+
+The app pays for itself in 13 days.
+
+## Status
+
+Research & validation phase. Not built yet.
+
+**Validation in progress:**
+- [ ] Reddit/Discord posts to gauge interest
+- [ ] User interviews with people who complained about limits
+- [ ] Landing page with email signup
+
+If validation shows demand → MVP in 4-6 weeks.
 
 ## Documentation
 
-- [RESEARCH.md](./RESEARCH.md) — Full product research, market analysis, technical feasibility
-
-## Next Steps
-
-1. [ ] Validate demand (Reddit posts, user interviews)
-2. [ ] Landing page with email signup
-3. [ ] MVP: Basic menu bar + ~/.claude parsing
-4. [ ] Beta test with 50 users
+- [RESEARCH.md](./RESEARCH.md) — Market analysis, technical feasibility, architecture
 
 ---
 
-*Last updated: 2026-01-30*
+*The information about efficient Claude Code usage exists. Blog posts, Reddit threads, documentation. But you read it, nod, forget, and use Opus anyway. The value isn't the knowledge — it's getting it at the exact moment you need it.*
