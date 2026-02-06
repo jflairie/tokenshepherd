@@ -1,62 +1,92 @@
 # TokenShepherd
 
-Anthropic doesn't want you to understand your Claude Code usage. Here's why.
+Real-time Claude Code quota monitoring. See what `/usage` doesn't show you.
 
-## The Uncomfortable Truth
+```
+$ ts status
 
-When you hit your quota unexpectedly, you have three options:
-1. Wait for reset (Anthropic: neutral)
-2. Upgrade Pro → Max for $180/month more (Anthropic: happy)
-3. Understand your usage and optimize (Anthropic: loses money)
+╭──────────────────────────────────────────╮
+│ ●  TokenShepherd (max)                   │
+│                                          │
+│ 5-Hour Window                            │
+│ █░░░░░░░░░░░░░░░░░░░  7%                 │
+│ Resets: tomorrow at 2:00 AM              │
+│                                          │
+│ 7-Day Window                             │
+│ ████████░░░░░░░░░░░░  39%                │
+│ Resets: Thursday at 1:00 PM              │
+│                                          │
+│ ✓ Quota healthy                          │
+│ 5hr resets in: 2h 43m                    │
+╰──────────────────────────────────────────╯
+```
 
-They will never build detailed usage monitoring. It's against their interests.
+## Why This Exists
 
-## The Problem
+**ccusage** shows historical token counts. Good for flexing, not for planning.
 
-From Reddit, Discord, and GitHub — real complaints:
+**TokenShepherd** shows real-time quota percentages. Know exactly where you stand.
 
-> "Hit 100% in 10-15 minutes"
+| ccusage | TokenShepherd |
+|---------|---------------|
+| "You used 847k tokens" | "You're at 39% of 7-day quota" |
+| Historical only | Real-time API |
+| Token counts | Percentage + reset times |
 
-> "Ran out in 2 hours"
+## Installation
 
-> "$200/month on Max and still hitting limits"
+```bash
+# Clone and install
+git clone https://github.com/your-username/tokenshepherd
+cd tokenshepherd
+npm install
 
-The usage bar fills. You don't know why. You don't know what's eating your tokens. You don't know if Opus was worth it for that task or if Sonnet would've been fine.
+# Run
+npm run status
 
-## What This Is
+# Or with npx (after building)
+npm run build
+npx ts status
+```
 
-A Mac menu bar app that sits between you and your quota:
+**Requirements:**
+- Node.js 18+
+- macOS (uses Keychain for credentials)
+- Logged into Claude Code (`claude` CLI)
 
-- **Pace indicator**: "At this rate, you'll hit your limit in 3.5 hours. Reset: Sunday 1pm."
-- **Session breakdown**: Which conversations are burning tokens
-- **Context warnings**: "This session is at 142k context. Starting fresh would save ~40% on next requests."
-- **Model recommendations**: When Opus is worth it, when Sonnet is enough
+## Usage
 
-## The Math
+```bash
+# Show quota status (default)
+ts status
 
-| Without TokenShepherd | With TokenShepherd |
-|-----------------------|--------------------|
-| Keep hitting limits → Upgrade to Max ($200/mo) | Understand usage → Stay on Pro ($20/mo) |
-| Annual cost: $2,400 | Annual cost: $240 + $79 app = $319 |
-| **You save: $0** | **You save: $2,081/year** |
+# Raw JSON output
+ts status --raw
 
-The app pays for itself in 13 days.
+# Help
+ts --help
+```
 
-## Status
+## How It Works
 
-Research & validation phase. Not built yet.
+1. Reads OAuth token from macOS Keychain (where Claude Code stores it)
+2. Calls Anthropic's quota API (`/api/oauth/usage`)
+3. Displays real-time utilization percentages
 
-**Validation in progress:**
-- [ ] Reddit/Discord posts to gauge interest
-- [ ] User interviews with people who complained about limits
-- [ ] Landing page with email signup
+No data leaves your machine except the API call to Anthropic.
 
-If validation shows demand → MVP in 4-6 weeks.
+## What's Next
 
-## Documentation
+If this is useful, planned features:
+- [ ] Pace calculation ("At this rate, hits limit at 6pm")
+- [ ] `ts watch` — live updating display
+- [ ] Menu bar app with traffic light
+- [ ] Notifications at 70%, 90%
 
-- [RESEARCH.md](./RESEARCH.md) — Market analysis, technical feasibility, architecture
+## Feedback
+
+Found this useful? Have ideas? [Open an issue](https://github.com/your-username/tokenshepherd/issues) or DM me.
 
 ---
 
-*The information about efficient Claude Code usage exists. Blog posts, Reddit threads, documentation. But you read it, nod, forget, and use Opus anyway. The value isn't the knowledge — it's getting it at the exact moment you need it.*
+*Built because I kept hitting my quota unexpectedly.*
