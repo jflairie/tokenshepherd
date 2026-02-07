@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="styles.css">
+  <title>TokenShepherd</title>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <span class="status-indicator green" id="status">●</span>
+      <span class="title">TokenShepherd</span>
+    </div>
+
+    <div class="quota-section">
+      <div class="quota-item">
+        <div class="quota-header">
+          <div class="label">5-Hour Window</div>
+          <div class="percentage" id="five-hour-pct">--%</div>
+        </div>
+        <div class="progress-bar">
+          <div class="progress-fill green" id="five-hour-bar"></div>
+        </div>
+        <div class="reset-time" id="five-hour-reset">--</div>
+      </div>
+
+      <div class="quota-item">
+        <div class="quota-header">
+          <div class="label">7-Day Window</div>
+          <div class="percentage" id="seven-day-pct">--%</div>
+        </div>
+        <div class="progress-bar">
+          <div class="progress-fill green" id="seven-day-bar"></div>
+        </div>
+        <div class="reset-time" id="seven-day-reset">--</div>
+      </div>
+
+      <div class="quota-item" id="sonnet-section" style="display: none;">
+        <div class="quota-header">
+          <div class="label">7-Day Sonnet</div>
+          <div class="percentage" id="sonnet-pct">--%</div>
+        </div>
+        <div class="progress-bar">
+          <div class="progress-fill green" id="sonnet-bar"></div>
+        </div>
+        <div class="reset-time" id="sonnet-reset">--</div>
+      </div>
+    </div>
+
+    <div class="alert" id="alert" style="display:none;"></div>
+
+    <div class="actions">
+      <button id="refresh" class="btn-refresh">Refresh</button>
+    </div>
+  </div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
