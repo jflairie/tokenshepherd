@@ -81,6 +81,14 @@ struct QuotaData {
     var bindingWindow: QuotaWindow {
         fiveHour.utilization >= sevenDay.utilization ? fiveHour : sevenDay
     }
+
+    var bindingWindowLabel: String {
+        fiveHour.utilization >= sevenDay.utilization ? "5-hour window" : "7-day window"
+    }
+
+    var bindingWindowDuration: TimeInterval {
+        fiveHour.utilization >= sevenDay.utilization ? 18_000 : 604_800
+    }
 }
 
 enum QuotaState {

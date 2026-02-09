@@ -4,6 +4,7 @@ struct PaceInfo {
     let timeToLimit: TimeInterval
     let timeToReset: TimeInterval
     let showWarning: Bool
+    let limitAtTime: Date
 
     var timeToLimitFormatted: String {
         formatInterval(timeToLimit)
@@ -11,6 +12,22 @@ struct PaceInfo {
 
     var timeToResetFormatted: String {
         formatInterval(timeToReset)
+    }
+
+    var limitAtFormatted: String {
+        let calendar = Calendar.current
+        let now = Date()
+        let formatter = DateFormatter()
+        formatter.locale = Locale.current
+
+        if calendar.isDate(limitAtTime, inSameDayAs: now) {
+            formatter.dateFormat = "h:mm a"
+        } else if calendar.isDate(limitAtTime, inSameDayAs: calendar.date(byAdding: .day, value: 1, to: now)!) {
+            formatter.dateFormat = "'tomorrow' h:mm a"
+        } else {
+            formatter.dateFormat = "EEE h:mm a"
+        }
+        return formatter.string(from: limitAtTime)
     }
 
     private func formatInterval(_ interval: TimeInterval) -> String {
@@ -45,7 +62,8 @@ struct PaceCalculator {
         return PaceInfo(
             timeToLimit: timeToLimit,
             timeToReset: timeToReset,
-            showWarning: showWarning
+            showWarning: showWarning,
+            limitAtTime: Date().addingTimeInterval(timeToLimit)
         )
     }
 }

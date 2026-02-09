@@ -7,12 +7,20 @@ class QuotaService: ObservableObject {
 
     private static let minRefreshInterval: TimeInterval = 30
     private var isFetching = false
+    private var backgroundTimer: Timer?
 
     private static let isoFormatter: ISO8601DateFormatter = {
         let f = ISO8601DateFormatter()
         f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return f
     }()
+
+    func startBackgroundRefresh() {
+        backgroundTimer?.invalidate()
+        backgroundTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+            self?.refresh()
+        }
+    }
 
     func refresh() {
         // Skip if already fetching

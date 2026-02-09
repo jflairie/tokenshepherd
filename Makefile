@@ -1,4 +1,8 @@
-.PHONY: build run clean cli
+.PHONY: build run run-app clean cli
+
+APP_NAME = TokenShepherd
+APP_BUNDLE = macos/.build/$(APP_NAME).app
+BINARY = macos/.build/arm64-apple-macosx/debug/$(APP_NAME)
 
 # Build the Swift menu bar app
 build:
@@ -8,9 +12,15 @@ build:
 release:
 	cd macos && swift build -c release
 
-# Run the menu bar app
-run: build
-	cd macos && swift run
+# Run the menu bar app as .app bundle (notifications enabled)
+run: build bundle
+	open -W "$(APP_BUNDLE)"
+
+# Create .app bundle from built binary
+bundle:
+	mkdir -p "$(APP_BUNDLE)/Contents/MacOS"
+	cp "$(BINARY)" "$(APP_BUNDLE)/Contents/MacOS/$(APP_NAME)"
+	cp macos/Resources/Info.plist "$(APP_BUNDLE)/Contents/Info.plist"
 
 # Build CLI (TypeScript)
 cli:
