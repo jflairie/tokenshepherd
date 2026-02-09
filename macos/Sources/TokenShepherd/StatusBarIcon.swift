@@ -9,10 +9,10 @@ struct StatusBarIcon {
     private static let sheepFont = NSFont.systemFont(ofSize: 16)
     private static let suffixFont = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .medium)
 
-    static func icon(for state: QuotaState) -> Result {
+    static func icon(for state: QuotaState, trajectoryWarning: Bool = false) -> Result {
         switch state {
         case .loading, .error:
-            return Result(image: renderIcon(suffix: nil, color: nil))
+            return Result(image: renderIcon(suffix: nil, color: nil, sheepTint: nil))
 
         case .loaded(let data):
             let binding = data.bindingWindow
@@ -20,22 +20,26 @@ struct StatusBarIcon {
 
             if binding.isLocked {
                 let countdown = binding.resetsInFormatted
-                return Result(image: renderIcon(suffix: "\(countdown)", color: .systemRed))
+                return Result(image: renderIcon(suffix: "\(countdown)", color: .systemRed, sheepTint: nil))
             }
 
             if util >= 0.9 {
-                return Result(image: renderIcon(suffix: "\(Int(util * 100))%", color: .systemRed))
+                return Result(image: renderIcon(suffix: "\(Int(util * 100))%", color: .systemRed, sheepTint: nil))
             }
 
             if util >= 0.7 {
-                return Result(image: renderIcon(suffix: "\(Int(util * 100))%", color: .systemOrange))
+                return Result(image: renderIcon(suffix: "\(Int(util * 100))%", color: .systemOrange, sheepTint: nil))
             }
 
-            return Result(image: renderIcon(suffix: nil, color: nil))
+            if trajectoryWarning {
+                return Result(image: renderIcon(suffix: nil, color: nil, sheepTint: .systemOrange))
+            }
+
+            return Result(image: renderIcon(suffix: nil, color: nil, sheepTint: nil))
         }
     }
 
-    private static func renderIcon(suffix: String?, color: NSColor?) -> NSImage {
+    private static func renderIcon(suffix: String?, color: NSColor?, sheepTint: NSColor?) -> NSImage {
         let sheepAttrs: [NSAttributedString.Key: Any] = [.font: sheepFont]
         let sheepSize = (sheepEmoji as NSString).size(withAttributes: sheepAttrs)
 
@@ -63,6 +67,15 @@ struct StatusBarIcon {
             withAttributes: sheepAttrs
         )
         ctx.restoreGState()
+
+        // Tint sheep (trajectory warning — orange wash over the emoji)
+        if let sheepTint {
+            ctx.saveGState()
+            ctx.setBlendMode(.sourceAtop)
+            ctx.setFillColor(sheepTint.withAlphaComponent(0.4).cgColor)
+            ctx.fill(CGRect(x: 0, y: (height - sheepSize.height) / 2, width: sheepSize.width, height: sheepSize.height))
+            ctx.restoreGState()
+        }
 
         // Draw suffix
         if let suffix {

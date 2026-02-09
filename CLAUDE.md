@@ -71,7 +71,7 @@ The app doesn't just show numbers. It watches your pace and speaks when there's 
 | State | Icon | Menu heading | Triggers when |
 |---|---|---|---|
 | Calm | Sheep (no suffix) | Context: window, model, reset time | Utilization < 70%, no trajectory concern |
-| Trajectory | Sheep (no suffix) | "Heads up" | Pace projects to 90%+ at reset, util still < 70% |
+| Trajectory | Sheep orange-tinted (no suffix) | "Heads up" | Pace projects to 90%+ at reset, util still < 70% |
 | Getting warm | `78%` orange | "Getting warm" | Utilization 70-89% |
 | Running low | `94%` red | "Running low" | Utilization 90-99% |
 | Locked | `2h 15m` red | "Limit reached" | Utilization 100% |

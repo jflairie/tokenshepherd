@@ -7,7 +7,6 @@ struct BindingView: View {
     let trend: TrendInfo?
     let sparklineData: [Double]
     let dominantModel: String?
-    let lastWindowPeak: Double?  // previous window's peak utilization
 
     private var isFiveHourBinding: Bool {
         quota.fiveHour.utilization >= quota.sevenDay.utilization
@@ -104,15 +103,6 @@ struct BindingView: View {
                 bindingInsight
             }
 
-            // Velocity
-            if !bindingWindow.isLocked, let trend, abs(trend.recentDelta) >= 0.02 {
-                let sign = trend.recentDelta > 0 ? "up" : "down"
-                let pct = Int(abs(trend.recentDelta) * 100)
-                Text("\(sign) \(pct)% in the last hour")
-                    .font(.system(.caption2))
-                    .foregroundStyle(abs(trend.recentDelta) >= 0.15 ? .red : abs(trend.recentDelta) >= 0.05 ? .orange : .secondary)
-            }
-
             // Utilization: percentage + bar together
             if !bindingWindow.isLocked {
                 HStack(alignment: .center, spacing: 8) {
@@ -145,16 +135,7 @@ struct BindingView: View {
                     Text("resets in \(bindingWindow.resetsInFormatted)")
                         .foregroundStyle(.tertiary)
                 }
-                if let peak = lastWindowPeak {
-                    Text("\u{00B7} last peaked \(Int(peak * 100))%")
-                        .foregroundStyle(.quaternary)
-                }
                 Spacer()
-                if !bindingWindow.isLocked {
-                    Text(quota.fetchedAt, style: .relative)
-                        .monospacedDigit()
-                        .foregroundStyle(.quaternary)
-                }
             }
             .font(.system(.caption2))
         }
@@ -202,11 +183,11 @@ struct BindingView: View {
                 content: nonBindingContent
             )
 
-            if let sonnet = quota.sevenDaySonnet {
+            if let sonnet = quota.sevenDaySonnet, sonnet.utilization >= 0.5 {
                 secondaryRow(
                     label: "Sonnet 7d",
                     content: Text("\(Int(sonnet.utilization * 100))%")
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(sonnet.utilization >= 0.9 ? .red : .orange)
                 )
             }
 
