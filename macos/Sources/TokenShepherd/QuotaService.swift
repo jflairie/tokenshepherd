@@ -8,6 +8,8 @@ class QuotaService: ObservableObject {
     private static let minRefreshInterval: TimeInterval = 30
     private var isFetching = false
     private var backgroundTimer: Timer?
+    private var previousFiveHourResetsAt: Date?
+    private var previousSevenDayResetsAt: Date?
 
     private static let isoFormatter: ISO8601DateFormatter = {
         let f = ISO8601DateFormatter()
@@ -95,6 +97,9 @@ class QuotaService: ObservableObject {
         // 5. Append to history
         HistoryStore.append(from: quotaData)
 
+        // 6. Detect window cycle changes and write summaries
+        detectWindowCycle(quotaData: quotaData)
+
         return .loaded(quotaData)
     }
 
@@ -118,5 +123,48 @@ class QuotaService: ObservableObject {
             utilization: api.utilization / 100.0,
             resetsAt: date
         )
+    }
+
+    private func detectWindowCycle(quotaData: QuotaData) {
+        // 5-hour window cycle
+        if let prev = previousFiveHourResetsAt,
+           !datesMatchWithinTolerance(prev, quotaData.fiveHour.resetsAt) {
+            writeWindowSummary(resetsAt: prev, isFiveHour: true, windowType: "5-hour")
+        }
+        previousFiveHourResetsAt = quotaData.fiveHour.resetsAt
+
+        // 7-day window cycle
+        if let prev = previousSevenDayResetsAt,
+           !datesMatchWithinTolerance(prev, quotaData.sevenDay.resetsAt) {
+            writeWindowSummary(resetsAt: prev, isFiveHour: false, windowType: "7-day")
+        }
+        previousSevenDayResetsAt = quotaData.sevenDay.resetsAt
+    }
+
+    private func writeWindowSummary(resetsAt: Date, isFiveHour: Bool, windowType: String) {
+        let entries = HistoryStore.readForWindow(resetsAt: resetsAt, isFiveHour: isFiveHour)
+        guard !entries.isEmpty else { return }
+
+        let utils = entries.map { isFiveHour ? $0.fiveHourUtil : $0.sevenDayUtil }
+        let peak = utils.max() ?? 0
+        let wasLocked = peak >= 1.0
+
+        let first = entries.first!
+        let last = entries.last!
+        let spanHours = max(last.ts.timeIntervalSince(first.ts) / 3600, 0.001)
+        let lastUtil = isFiveHour ? last.fiveHourUtil : last.sevenDayUtil
+        let firstUtil = isFiveHour ? first.fiveHourUtil : first.sevenDayUtil
+        let avgRate = (lastUtil - firstUtil) / spanHours
+
+        let summary = WindowSummary(
+            closedAt: Date(),
+            windowType: windowType,
+            peakUtilization: peak,
+            avgRate: avgRate,
+            entryCount: entries.count,
+            wasLocked: wasLocked
+        )
+        WindowSummaryStore.append(summary)
+        NSLog("[TokenShepherd] Window cycle closed: \(windowType), peak=\(Int(peak * 100))%, entries=\(entries.count)")
     }
 }

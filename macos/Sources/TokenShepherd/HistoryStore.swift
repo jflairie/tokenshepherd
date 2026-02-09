@@ -52,4 +52,46 @@ struct HistoryStore {
             return entry
         }
     }
+
+    /// Read history entries belonging to a specific window cycle (matched by resetsAt within tolerance).
+    static func readForWindow(
+        resetsAt: Date,
+        isFiveHour: Bool,
+        since: Date = Date.distantPast
+    ) -> [HistoryEntry] {
+        read(since: since).filter { entry in
+            let entryResetsAt = isFiveHour ? entry.fiveHourResetsAt : entry.sevenDayResetsAt
+            return datesMatchWithinTolerance(entryResetsAt, resetsAt)
+        }
+    }
+}
+
+// MARK: - Window Summary Store
+
+struct WindowSummaryStore {
+    private static let directoryURL = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent(".tokenshepherd")
+    private static let fileURL = directoryURL.appendingPathComponent("windows.jsonl")
+
+    static func append(_ summary: WindowSummary) {
+        do {
+            try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+            let encoder = JSONEncoder()
+            encoder.dateEncodingStrategy = .iso8601
+            let data = try encoder.encode(summary)
+            guard var line = String(data: data, encoding: .utf8) else { return }
+            line += "\n"
+
+            if FileManager.default.fileExists(atPath: fileURL.path) {
+                let handle = try FileHandle(forWritingTo: fileURL)
+                handle.seekToEndOfFile()
+                handle.write(line.data(using: .utf8)!)
+                handle.closeFile()
+            } else {
+                try line.write(to: fileURL, atomically: true, encoding: .utf8)
+            }
+        } catch {
+            NSLog("[TokenShepherd] Window summary write error: \(error.localizedDescription)")
+        }
+    }
 }
