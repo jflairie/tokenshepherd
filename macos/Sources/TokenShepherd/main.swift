@@ -9,7 +9,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var cancellables = Set<AnyCancellable>()
     private var cachedDominantModel: String?
     private var statsCacheTimer: Timer?
-    private var iconShowTrajectory = false
 
     private var contentItem: NSMenuItem!
     private var footerItem: NSMenuItem!
@@ -194,19 +193,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let windowType = isFiveHour ? "5-hour" : "7-day"
             let lastWindowPeak = WindowSummaryStore.lastSummary(windowType: windowType)?.peakUtilization
 
-            // Compute trajectory warning for icon
-            let bindingPace = isFiveHour ? fiveHourPace : sevenDayPace
-            let paceWarning = bindingPace?.showWarning ?? false
-            var trajectoryWarning = false
-            let timeToReset = bindingWindow.resetsAt.timeIntervalSinceNow
-            if timeToReset > 0, bindingWindow.utilization > 0.01,
-               let t = trend, abs(t.velocityPerHour) > 0.001 {
-                let hoursRemaining = timeToReset / 3600
-                let p = bindingWindow.utilization + (t.velocityPerHour * hoursRemaining)
-                trajectoryWarning = max(min(p, 1.0), bindingWindow.utilization) >= 0.9
-            }
-            iconShowTrajectory = bindingWindow.utilization < 0.7 && (paceWarning || trajectoryWarning)
-
             let heroView = NSHostingView(rootView: BindingView(
                 quota: quota,
                 fiveHourPace: fiveHourPace,
@@ -243,7 +229,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func updateIcon(_ state: QuotaState) {
         guard let button = statusItem.button else { return }
-        let icon = StatusBarIcon.icon(for: state, showTrajectory: iconShowTrajectory)
+        let icon = StatusBarIcon.icon(for: state)
         button.image = icon.image
         button.title = ""
     }

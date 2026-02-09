@@ -11,20 +11,14 @@ If the sheep is calm, you never need to click.
 ```
  🐑          All good. Keep working.
 
- 🐑↗         Your pace is heading for the limit.
-              (orange — look closer)
+ 🐑 78%      Getting warm.  (orange)
 
- 🐑 78%      Utilization is getting warm.
-              (orange)
+ 🐑 94%      Running low.   (red)
 
- 🐑 94%      Running low.
-              (red)
-
- 🐑 2h 15m   Locked. Countdown to reset.
-              (red)
+ 🐑 2h 15m   Locked.        (red)
 ```
 
-Three distinct formats: nothing, arrow, number. Glance at the menu bar, know where you stand.
+Nothing, number, countdown. Glance at the menu bar, know where you stand.
 
 <br>
 
@@ -117,7 +111,6 @@ The app doesn't just show numbers. It watches your pace and speaks when there's 
 | State | Icon | What it means |
 |:------|:-----|:--------------|
 | **Calm** | 🐑 | You're fine. Keep working. |
-| **Trajectory** | 🐑↗ | Your pace is heading for the limit |
 | **Warm** | 🐑 78% | Utilization above 70% |
 | **Low** | 🐑 94% | Utilization above 90% |
 | **Locked** | 🐑 2h 15m | Limit hit. Countdown to reset. |

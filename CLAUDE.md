@@ -29,14 +29,14 @@ make clean      # Clean Swift build artifacts
 
 ### Three Surfaces
 
-1. **Icon (ambient)** — Calm sheep = fine. Orange `→92%` = trajectory warning. Orange `78%` = warm. Red `94%` = low. Red `2h 15m` = locked. 80% of the value lives here.
+1. **Icon (ambient)** — Calm sheep = fine. Orange `78%` = warm. Red `94%` = low. Red `2h 15m` = locked. 80% of the value lives here.
 2. **Notifications (proactive)** — Pace warning, 90% threshold, locked, restored. Each fires once per window cycle.
 3. **Menu (on demand)** — Guardian-first hero (verdict when warning, context when calm), progress bar, sparkline, secondary windows, metadata footer.
 
 ### File Structure
 ```
 macos/Sources/TokenShepherd/
-  main.swift              — AppDelegate, menu construction, trajectory computation, footer, wiring
+  main.swift              — AppDelegate, menu construction, footer, wiring
   Models.swift            — All data types (API response, domain, auth, history, trend, window summary)
   KeychainService.swift   — Read Claude Code OAuth token from macOS Keychain
   APIService.swift        — URLSession GET to Anthropic quota API + token refresh
@@ -60,7 +60,7 @@ KeychainService → OAuthCredentials
     → HistoryStore.append() → ~/.tokenshepherd/history.jsonl
     → HistoryStore.readForWindow() → TrendCalculator → velocity + sparkline
     → BindingView (guardian hero, bar, sparkline, secondary)
-    → StatusBarIcon (sheep + trajectory/utilization suffix)
+    → StatusBarIcon (sheep + utilization suffix)
     → NotificationService.evaluate()
 ```
 
@@ -70,13 +70,13 @@ The app doesn't just show numbers. It watches your pace and speaks when there's 
 
 | State | Icon | Menu heading | Triggers when |
 |---|---|---|---|
-| Calm | Sheep (no suffix) | Context: window, model, reset time | Utilization < 70%, no trajectory warning |
-| Trajectory warning | `↗` orange | "Heads up" | Current pace projects to 90%+ at reset, util still < 70% |
+| Calm | Sheep (no suffix) | Context: window, model, reset time | Utilization < 70%, no trajectory concern |
+| Trajectory | Sheep (no suffix) | "Heads up" | Pace projects to 90%+ at reset, util still < 70% |
 | Getting warm | `78%` orange | "Getting warm" | Utilization 70-89% |
 | Running low | `94%` red | "Running low" | Utilization 90-99% |
 | Locked | `2h 15m` red | "Limit reached" | Utilization 100% |
 
-Icon and menu are always consistent — same color, same verdict.
+Icon shows current state (ambient). Menu heading shows full analysis including trajectory (focused attention). Notification bridges the gap — proactive alert, fires once.
 
 ### Notification Thresholds
 | Trigger | Condition | Fires once per |
@@ -99,7 +99,7 @@ No data leaves your machine except the API call to Anthropic.
 - **Fuzzy date matching:** API `resetsAt` oscillates by ~1s between fetches. All date comparisons use 60s tolerance.
 - **Single NSImage icon:** Sheep emoji flipped via CGContext transform, rendered with colored suffix as one image. No gaps, no confusion with system icons.
 - **Guardian-first UI:** Heading shows verdict ("Heads up", "Running low") when there's a warning. Shows context (window type, model, reset time) when calm. The app speaks when it has something to say.
-- **Trajectory projection:** Uses trend velocity, not naive linear extrapolation. Projects utilization at reset time. Triggers guardian warning at < 70% util if projected >= 90%.
+- **Trajectory projection:** Uses trend velocity, not naive linear extrapolation. Projects utilization at reset time. Surfaces in menu insight and notifications — not in the icon (icon shows current state only).
 
 ## Key Documents
 
