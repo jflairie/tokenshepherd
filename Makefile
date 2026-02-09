@@ -3,6 +3,8 @@
 APP_NAME = TokenShepherd
 APP_BUNDLE = macos/.build/$(APP_NAME).app
 BINARY = macos/.build/arm64-apple-macosx/debug/$(APP_NAME)
+BINARY_RELEASE = macos/.build/arm64-apple-macosx/release/$(APP_NAME)
+ENTITLEMENTS = macos/Resources/TokenShepherd.entitlements
 
 # Build the Swift menu bar app
 build:
@@ -21,6 +23,16 @@ bundle:
 	mkdir -p "$(APP_BUNDLE)/Contents/MacOS"
 	cp "$(BINARY)" "$(APP_BUNDLE)/Contents/MacOS/$(APP_NAME)"
 	cp macos/Resources/Info.plist "$(APP_BUNDLE)/Contents/Info.plist"
+	codesign --force --deep --sign - --entitlements "$(ENTITLEMENTS)" --options runtime "$(APP_BUNDLE)"
+
+# Create distributable .app bundle (release build)
+dist: release
+	mkdir -p "$(APP_BUNDLE)/Contents/MacOS"
+	cp "$(BINARY_RELEASE)" "$(APP_BUNDLE)/Contents/MacOS/$(APP_NAME)"
+	cp macos/Resources/Info.plist "$(APP_BUNDLE)/Contents/Info.plist"
+	codesign --force --deep --sign - --entitlements "$(ENTITLEMENTS)" --options runtime "$(APP_BUNDLE)"
+	cd macos/.build && zip -r $(APP_NAME).zip $(APP_NAME).app
+	@echo "Built: macos/.build/$(APP_NAME).zip"
 
 # Build CLI (TypeScript)
 cli:
