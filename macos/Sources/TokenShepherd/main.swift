@@ -7,12 +7,20 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     let quotaService = QuotaService()
     let notificationService = NotificationService()
     private var cancellables = Set<AnyCancellable>()
-    private var cachedDominantModel: String?
+    private var cachedTokenSummary: TokenSummary?
     private var statsCacheTimer: Timer?
-    private var iconTrajectoryWarning = false
+    private var iconSheepTint: NSColor?
 
     private var contentItem: NSMenuItem!
+    private var detailsToggleItem: NSMenuItem!
+    private var detailsContentItem: NSMenuItem!
     private var footerItem: NSMenuItem!
+    private var detailsVisible = false
+
+    // Cache latest quota data for details updates
+    private var latestQuota: QuotaData?
+    private var latestFiveHourPace: PaceInfo?
+    private var latestSevenDayPace: PaceInfo?
 
     func setupStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -27,13 +35,22 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let menu = NSMenu()
         menu.delegate = self
 
-        // Content (hero + everything)
+        // Hero content
         contentItem = NSMenuItem()
         menu.addItem(contentItem)
 
+        // Details toggle (▶ Details)
+        detailsToggleItem = NSMenuItem()
+        menu.addItem(detailsToggleItem)
+
+        // Details content (hidden by default)
+        detailsContentItem = NSMenuItem()
+        detailsContentItem.isHidden = true
+        menu.addItem(detailsContentItem)
+
         menu.addItem(NSMenuItem.separator())
 
-        // Actions footer (unified custom view)
+        // Actions footer
         footerItem = NSMenuItem()
         updateFooter(fetchedAt: nil)
         menu.addItem(footerItem)
@@ -60,6 +77,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusItem.menu = menu
 
         setLoadingState()
+        updateDetailsToggle()
 
         notificationService.requestPermission()
 
@@ -77,10 +95,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // Housekeeping
         HistoryStore.prune()
 
-        // Load dominant model from Claude Code stats
-        cachedDominantModel = StatsCache.dominantModel()
+        // Load token summary from Claude Code stats
+        cachedTokenSummary = StatsCache.tokenSummary()
         statsCacheTimer = Timer.scheduledTimer(withTimeInterval: 600, repeats: true) { [weak self] _ in
-            self?.cachedDominantModel = StatsCache.dominantModel()
+            self?.cachedTokenSummary = StatsCache.tokenSummary()
         }
 
         NSLog("[TokenShepherd] Ready")
@@ -119,6 +137,38 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc func openDashboard() {
         NSWorkspace.shared.open(URL(string: "https://claude.ai/settings")!)
+    }
+
+    // MARK: - Details Toggle
+
+    private func toggleDetails() {
+        detailsVisible.toggle()
+        updateDetailsToggle()
+        detailsContentItem.isHidden = !detailsVisible
+        if detailsVisible {
+            updateDetailsContent()
+        }
+    }
+
+    private func updateDetailsToggle() {
+        let toggleView = NSHostingView(rootView: DetailsToggleView(
+            expanded: detailsVisible,
+            onToggle: { [weak self] in self?.toggleDetails() }
+        ))
+        toggleView.frame.size = toggleView.fittingSize
+        detailsToggleItem.view = toggleView
+    }
+
+    private func updateDetailsContent() {
+        guard let quota = latestQuota else { return }
+        let detailsView = NSHostingView(rootView: DetailsContentView(
+            quota: quota,
+            fiveHourPace: latestFiveHourPace,
+            sevenDayPace: latestSevenDayPace,
+            tokenSummary: cachedTokenSummary
+        ))
+        detailsView.frame.size = detailsView.fittingSize
+        detailsContentItem.view = detailsView
     }
 
     // MARK: - UI Updates
@@ -192,18 +242,30 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 windowEnd: bindingWindow.resetsAt
             )
 
-            // Trajectory warning — tints the sheep orange (no suffix)
+            // Projection-driven sheep tint — only when util < 0.7 (higher util uses suffix)
             let bindingPace = isFiveHour ? fiveHourPace : sevenDayPace
             let paceWarning = bindingPace?.showWarning ?? false
-            var trajectoryWarning = false
+            var projectedUtil: Double? = nil
             let timeToReset = bindingWindow.resetsAt.timeIntervalSinceNow
             if timeToReset > 0, bindingWindow.utilization > 0.01,
                let t = trend, abs(t.velocityPerHour) > 0.001 {
                 let hoursRemaining = timeToReset / 3600
-                let p = bindingWindow.utilization + (t.velocityPerHour * hoursRemaining)
-                trajectoryWarning = max(min(p, 1.0), bindingWindow.utilization) >= 0.9
+                projectedUtil = max(min(bindingWindow.utilization + (t.velocityPerHour * hoursRemaining), 1.0), bindingWindow.utilization)
             }
-            iconTrajectoryWarning = bindingWindow.utilization < 0.7 && (paceWarning || trajectoryWarning)
+            if bindingWindow.utilization < 0.7 {
+                if paceWarning || (projectedUtil ?? 0) >= 0.7 {
+                    iconSheepTint = .systemOrange
+                } else {
+                    iconSheepTint = nil
+                }
+            } else {
+                iconSheepTint = nil  // suffix handles >= 0.7
+            }
+
+            // Cache for details
+            latestQuota = quota
+            latestFiveHourPace = fiveHourPace
+            latestSevenDayPace = sevenDayPace
 
             let heroView = NSHostingView(rootView: BindingView(
                 quota: quota,
@@ -211,10 +273,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 sevenDayPace: sevenDayPace,
                 trend: trend,
                 sparklineData: sparklineData,
-                dominantModel: cachedDominantModel
+                tokenSummary: cachedTokenSummary
             ))
             heroView.frame.size = heroView.fittingSize
             contentItem.view = heroView
+
+            // Refresh details content if visible
+            if detailsVisible {
+                updateDetailsContent()
+            }
+
             updateFooter(fetchedAt: quota.fetchedAt)
         }
     }
@@ -240,7 +308,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func updateIcon(_ state: QuotaState) {
         guard let button = statusItem.button else { return }
-        let icon = StatusBarIcon.icon(for: state, trajectoryWarning: iconTrajectoryWarning)
+        let icon = StatusBarIcon.icon(for: state, sheepTint: iconSheepTint)
         button.image = icon.image
         button.title = ""
     }

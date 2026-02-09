@@ -3,6 +3,13 @@ import SwiftUI
 struct SparklineView: View {
     let data: [Double]
     let color: Color
+    let currentLabel: String?
+
+    init(data: [Double], color: Color, currentLabel: String? = nil) {
+        self.data = data
+        self.color = color
+        self.currentLabel = currentLabel
+    }
 
     var body: some View {
         if data.count < 2 {
@@ -32,6 +39,31 @@ struct SparklineView: View {
                 // Smooth stroke
                 smoothStrokePath(points: points)
                     .stroke(color.opacity(0.45), lineWidth: 1.5)
+
+                // Endpoint dot
+                if let lastPoint = points.last {
+                    Circle()
+                        .fill(color)
+                        .frame(width: 4, height: 4)
+                        .position(x: lastPoint.x, y: lastPoint.y)
+                }
+
+                // Pill label left of dot
+                if let label = currentLabel, let lastPoint = points.last {
+                    Text(label)
+                        .font(.system(.caption2, weight: .semibold).monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(RoundedRectangle(cornerRadius: 3).fill(.secondary.opacity(0.12)))
+                        .position(x: lastPoint.x - 34, y: max(lastPoint.y - 4, 8))
+                }
+
+                // "now" marker at bottom-right
+                Text("now")
+                    .font(.system(size: 8))
+                    .foregroundStyle(color.opacity(0.3))
+                    .position(x: geo.size.width - 10, y: geo.size.height - 2)
             }
             .frame(height: 32)
         }

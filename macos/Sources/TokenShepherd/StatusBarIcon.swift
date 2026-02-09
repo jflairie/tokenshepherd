@@ -9,7 +9,7 @@ struct StatusBarIcon {
     private static let sheepFont = NSFont.systemFont(ofSize: 16)
     private static let suffixFont = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .medium)
 
-    static func icon(for state: QuotaState, trajectoryWarning: Bool = false) -> Result {
+    static func icon(for state: QuotaState, sheepTint: NSColor? = nil) -> Result {
         switch state {
         case .loading, .error:
             return Result(image: renderIcon(suffix: nil, color: nil, sheepTint: nil))
@@ -31,8 +31,8 @@ struct StatusBarIcon {
                 return Result(image: renderIcon(suffix: "\(Int(util * 100))%", color: .systemOrange, sheepTint: nil))
             }
 
-            if trajectoryWarning {
-                return Result(image: renderIcon(suffix: nil, color: nil, sheepTint: .systemOrange))
+            if let tint = sheepTint {
+                return Result(image: renderIcon(suffix: nil, color: nil, sheepTint: tint))
             }
 
             return Result(image: renderIcon(suffix: nil, color: nil, sheepTint: nil))

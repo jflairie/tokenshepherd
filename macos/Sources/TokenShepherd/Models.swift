@@ -143,6 +143,15 @@ struct WindowSummary: Codable {
     let wasLocked: Bool
 }
 
+// MARK: - Token Summary
+
+struct TokenSummary {
+    let today: Int
+    let yesterday: Int
+    let last7Days: Int
+    let dominantModel: String?
+}
+
 // MARK: - Formatting
 
 func formatTime(_ date: Date) -> String {
