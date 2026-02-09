@@ -7,6 +7,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     let quotaService = QuotaService()
     let notificationService = NotificationService()
     private var cancellables = Set<AnyCancellable>()
+    private var cachedDominantModel: String?
+    private var statsCacheTimer: Timer?
 
     private var contentItem: NSMenuItem!
     private var footerItem: NSMenuItem!
@@ -30,14 +32,29 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         menu.addItem(NSMenuItem.separator())
 
-        // Footer: Refresh + Quit on one line
+        // Actions footer (unified custom view)
         footerItem = NSMenuItem()
-        let footerView = NSHostingView(rootView: FooterView())
+        let footerView = NSHostingView(rootView: ActionsFooterView(
+            onCopy: { [weak self] in
+                self?.copyStatus()
+                self?.statusItem.menu?.cancelTracking()
+            },
+            onDashboard: { [weak self] in
+                self?.openDashboard()
+                self?.statusItem.menu?.cancelTracking()
+            }
+        ))
         footerView.frame.size = footerView.fittingSize
         footerItem.view = footerView
         menu.addItem(footerItem)
 
         // Hidden items for keyboard shortcuts
+        let copyItem = NSMenuItem(title: "Copy", action: #selector(copyStatus), keyEquivalent: "c")
+        copyItem.target = self
+        copyItem.isHidden = true
+        copyItem.allowsKeyEquivalentWhenHidden = true
+        menu.addItem(copyItem)
+
         let refreshItem = NSMenuItem(title: "Refresh", action: #selector(refresh), keyEquivalent: "r")
         refreshItem.target = self
         refreshItem.isHidden = true
@@ -67,6 +84,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         quotaService.startBackgroundRefresh()
 
+        // Load dominant model from Claude Code stats
+        cachedDominantModel = StatsCache.dominantModel()
+        statsCacheTimer = Timer.scheduledTimer(withTimeInterval: 600, repeats: true) { [weak self] _ in
+            self?.cachedDominantModel = StatsCache.dominantModel()
+        }
+
         NSLog("[TokenShepherd] Ready")
     }
 
@@ -80,6 +103,28 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc func quit() {
         NSApplication.shared.terminate(nil)
+    }
+
+    @objc func copyStatus() {
+        guard case .loaded(let quota) = quotaService.state else { return }
+        let isFiveHour = quota.fiveHour.utilization >= quota.sevenDay.utilization
+        let bindingLabel = isFiveHour ? "5-hour" : "7-day"
+        let binding = quota.bindingWindow
+        let nonBindingLabel = isFiveHour ? "7-day" : "5-hour"
+        let nonBinding = isFiveHour ? quota.sevenDay : quota.fiveHour
+
+        var parts = ["\(bindingLabel): \(Int(binding.utilization * 100))%"]
+        if !binding.isLocked {
+            parts.append("resets in \(binding.resetsInFormatted)")
+        }
+        parts.append("| \(nonBindingLabel): \(Int(nonBinding.utilization * 100))%")
+
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(parts.joined(separator: " "), forType: .string)
+    }
+
+    @objc func openDashboard() {
+        NSWorkspace.shared.open(URL(string: "https://claude.ai/settings")!)
     }
 
     // MARK: - UI Updates
@@ -132,10 +177,32 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let fiveHourPace = PaceCalculator.pace(for: quota.fiveHour, windowDuration: PaceCalculator.fiveHourDuration)
             let sevenDayPace = PaceCalculator.pace(for: quota.sevenDay, windowDuration: PaceCalculator.sevenDayDuration)
 
+            // Determine binding window and read history
+            let isFiveHour = quota.fiveHour.utilization >= quota.sevenDay.utilization
+            let bindingWindow = isFiveHour ? quota.fiveHour : quota.sevenDay
+            let windowEntries = HistoryStore.readForWindow(
+                resetsAt: bindingWindow.resetsAt,
+                isFiveHour: isFiveHour
+            )
+
+            let trend = TrendCalculator.trend(entries: windowEntries, isFiveHour: isFiveHour)
+
+            let windowDuration = isFiveHour ? PaceCalculator.fiveHourDuration : PaceCalculator.sevenDayDuration
+            let windowStart = bindingWindow.resetsAt.addingTimeInterval(-windowDuration)
+            let sparklineData = TrendCalculator.sparklineBuckets(
+                entries: windowEntries,
+                isFiveHour: isFiveHour,
+                windowStart: windowStart,
+                windowEnd: bindingWindow.resetsAt
+            )
+
             let heroView = NSHostingView(rootView: BindingView(
                 quota: quota,
                 fiveHourPace: fiveHourPace,
-                sevenDayPace: sevenDayPace
+                sevenDayPace: sevenDayPace,
+                trend: trend,
+                sparklineData: sparklineData,
+                dominantModel: cachedDominantModel
             ))
             heroView.frame.size = heroView.fittingSize
             contentItem.view = heroView
@@ -149,20 +216,51 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 }
 
-// MARK: - Footer View
+// MARK: - Actions Footer View
 
-struct FooterView: View {
+struct ActionsFooterView: View {
+    let onCopy: () -> Void
+    let onDashboard: () -> Void
+
     var body: some View {
-        HStack(spacing: 0) {
-            Text("Refresh  \u{2318}R")
-            Spacer()
-            Text("Quit  \u{2318}Q")
+        VStack(spacing: 8) {
+            HStack {
+                FooterButton(title: "Copy status", shortcut: "\u{2318}C", action: onCopy)
+                Spacer()
+                FooterButton(title: "Dashboard", shortcut: nil, action: onDashboard)
+            }
+            HStack {
+                Text("Refresh  \u{2318}R")
+                Spacer()
+                Text("Quit  \u{2318}Q")
+            }
+            .font(.system(.caption2))
+            .foregroundStyle(.quaternary)
         }
-        .font(.system(.caption2))
-        .foregroundStyle(.tertiary)
         .frame(width: 232)
         .padding(.horizontal, 14)
-        .padding(.vertical, 3)
+        .padding(.vertical, 6)
+    }
+}
+
+struct FooterButton: View {
+    let title: String
+    let shortcut: String?
+    let action: () -> Void
+    @State private var isHovered = false
+
+    var body: some View {
+        HStack(spacing: 3) {
+            Text(title)
+            if let shortcut {
+                Text(shortcut)
+                    .foregroundStyle(.quaternary)
+            }
+        }
+        .font(.system(.caption))
+        .foregroundStyle(isHovered ? .primary : .tertiary)
+        .onHover { isHovered = $0 }
+        .onTapGesture { action() }
     }
 }
 

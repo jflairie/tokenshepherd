@@ -4,6 +4,9 @@ struct BindingView: View {
     let quota: QuotaData
     let fiveHourPace: PaceInfo?
     let sevenDayPace: PaceInfo?
+    let trend: TrendInfo?
+    let sparklineData: [Double]
+    let dominantModel: String?
 
     private var isFiveHourBinding: Bool {
         quota.fiveHour.utilization >= quota.sevenDay.utilization
@@ -25,45 +28,91 @@ struct BindingView: View {
         isFiveHourBinding ? "7-day" : "5-hour"
     }
 
+    // Guardian state: only speaks when there's something to say
+    private var warning: (text: String, color: Color)? {
+        if let pace = bindingPace, pace.showWarning {
+            return ("Heads up", .orange)
+        }
+        if bindingWindow.utilization >= 0.9 {
+            return ("Running low", .red)
+        }
+        if bindingWindow.utilization >= 0.7 {
+            return ("Getting warm", .orange)
+        }
+        return nil
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // === BINDING WINDOW (hero) ===
             bindingHero
-                .padding(.bottom, 10)
 
-            // === NON-BINDING WINDOW (compact) ===
-            nonBindingCompact
-                .padding(.bottom, 10)
+            Rectangle()
+                .fill(.quaternary.opacity(0.5))
+                .frame(height: 0.5)
+                .padding(.vertical, 10)
 
-            // === METADATA ===
-            metadataFooter
+            secondaryWindows
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+        .padding(.vertical, 12)
         .frame(width: 260, alignment: .leading)
     }
 
-    // MARK: - Binding hero
+    // MARK: - Hero
 
     private var bindingHero: some View {
         VStack(alignment: .leading, spacing: 5) {
-            // % + insight
+            // Heading
             HStack(alignment: .firstTextBaseline) {
                 if bindingWindow.isLocked {
                     Text("Limit reached")
-                        .font(.system(size: 28, weight: .bold, design: .rounded))
+                        .font(.system(size: 20, weight: .semibold, design: .rounded))
                         .foregroundStyle(.red)
                     Spacer()
                     Text("back at \(formatTime(bindingWindow.resetsAt))")
                         .font(.system(.callout, weight: .medium))
                         .foregroundStyle(.red)
-                } else {
-                    Text("\(Int(bindingWindow.utilization * 100))%")
-                        .font(.system(size: 28, weight: .bold, design: .rounded))
-                        .foregroundStyle(.primary)
+                } else if let warning {
+                    // Guardian speaks — verdict as heading
+                    Text(warning.text)
+                        .font(.system(size: 20, weight: .semibold, design: .rounded))
+                        .foregroundStyle(warning.color)
                     Spacer()
-                    bindingInsight
+                    Text("\(Int(bindingWindow.utilization * 100))%")
+                        .font(.system(size: 20, weight: .bold, design: .rounded))
+                        .foregroundStyle(.primary)
+                } else {
+                    // Calm — context as heading, number secondary
+                    HStack(spacing: 4) {
+                        Text(bindingLabel)
+                        if let model = dominantModel {
+                            Text("\u{00B7}")
+                                .foregroundStyle(.tertiary)
+                            Text(model)
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
+                    .font(.system(.body, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    Spacer()
+                    Text("\(Int(bindingWindow.utilization * 100))%")
+                        .font(.system(size: 20, weight: .bold, design: .rounded))
+                        .foregroundStyle(.primary)
                 }
+            }
+
+            // Insight
+            if !bindingWindow.isLocked {
+                bindingInsight
+            }
+
+            // Velocity
+            if !bindingWindow.isLocked, let trend, abs(trend.recentDelta) >= 0.02 {
+                let sign = trend.recentDelta > 0 ? "up" : "down"
+                let pct = Int(abs(trend.recentDelta) * 100)
+                Text("\(sign) \(pct)% in the last hour")
+                    .font(.system(.caption2))
+                    .foregroundStyle(abs(trend.recentDelta) >= 0.15 ? .red : abs(trend.recentDelta) >= 0.05 ? .orange : .secondary)
             }
 
             // Bar
@@ -71,13 +120,32 @@ struct BindingView: View {
                 progressBar(utilization: bindingWindow.utilization, color: bindingColor, height: 6)
             }
 
-            // Label + reset
+            // Sparkline
+            if sparklineHasVariation {
+                SparklineView(data: sparklineData, color: bindingColor)
+            }
+
+            // Context line
             HStack {
-                Text(bindingLabel)
-                    .foregroundStyle(.secondary)
-                if !bindingWindow.isLocked {
-                    Text("\u{00B7} \(bindingWindow.resetsInFormatted)")
+                if warning != nil {
+                    // Warning: full context here (heading was the verdict)
+                    Text(bindingLabel)
+                        .foregroundStyle(.secondary)
+                    if let model = dominantModel {
+                        Text("\u{00B7} \(model)")
+                            .foregroundStyle(.tertiary)
+                    }
+                    Text("\u{00B7} resets in \(bindingWindow.resetsInFormatted)")
                         .foregroundStyle(.tertiary)
+                } else if !bindingWindow.isLocked {
+                    // Calm: heading already has window label, just show reset
+                    Text("resets in \(bindingWindow.resetsInFormatted)")
+                        .foregroundStyle(.tertiary)
+                }
+                Spacer()
+                if !bindingWindow.isLocked {
+                    Text(quota.fetchedAt, style: .time)
+                        .foregroundStyle(.quaternary)
                 }
             }
             .font(.system(.caption2))
@@ -87,77 +155,82 @@ struct BindingView: View {
     @ViewBuilder
     private var bindingInsight: some View {
         if let pace = bindingPace, pace.showWarning {
-            // Approaching limit — show projected time
-            Text("~\(pace.limitAtFormatted)")
-                .font(.system(.callout, weight: .semibold))
+            Text("limit ~\(pace.limitAtFormatted)")
+                .font(.system(.caption))
                 .foregroundStyle(.red)
         } else if let projected = projectedAtReset(window: bindingWindow) {
-            // Calm — show projected usage at reset
-            Text("~\(Int(projected * 100))% at reset")
-                .font(.system(.callout))
+            Text("on pace for ~\(Int(projected * 100))%")
+                .font(.system(.caption))
                 .foregroundStyle(projected >= 0.8 ? .orange : .secondary)
         } else {
-            Text(bindingWindow.resetsInFormatted)
-                .font(.system(.callout))
-                .foregroundStyle(.secondary)
+            EmptyView()
         }
     }
 
-    // MARK: - Non-binding compact
+    // MARK: - Secondary
 
-    private var nonBindingCompact: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(nonBindingLabel)
-                    .font(.system(.caption, weight: .medium))
+    private var secondaryWindows: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            secondaryRow(
+                label: nonBindingLabel,
+                content: nonBindingContent
+            )
+
+            if let sonnet = quota.sevenDaySonnet {
+                secondaryRow(
+                    label: "Sonnet 7d",
+                    content: Text("\(Int(sonnet.utilization * 100))%")
+                        .foregroundStyle(.tertiary)
+                )
+            }
+
+            if quota.extraUsage.isEnabled,
+               let used = quota.extraUsage.usedCredits,
+               let limit = quota.extraUsage.monthlyLimit {
+                secondaryRow(
+                    label: "Extra",
+                    content: Text(String(format: "$%.0f / $%.0f", used, limit))
+                        .foregroundStyle(.tertiary)
+                )
+            }
+        }
+    }
+
+    private func secondaryRow<C: View>(label: String, content: C) -> some View {
+        HStack {
+            Text(label)
+                .font(.system(.caption, weight: .medium))
+                .foregroundStyle(.tertiary)
+            Spacer()
+            content
+                .font(.system(.caption))
+        }
+    }
+
+    @ViewBuilder
+    private var nonBindingContent: some View {
+        if nonBindingWindow.isLocked {
+            Text("Locked \u{00B7} \(formatTime(nonBindingWindow.resetsAt))")
+                .font(.system(.caption, weight: .medium))
+                .foregroundStyle(.red)
+        } else if nonBindingWindow.utilization < 0.01 {
+            Text("Fresh \u{00B7} resets \(nonBindingWindow.resetsInFormatted)")
+                .foregroundStyle(.green.opacity(0.7))
+        } else {
+            HStack(spacing: 4) {
+                Text("\(Int(nonBindingWindow.utilization * 100))%")
                     .foregroundStyle(.tertiary)
-                Spacer()
-                if nonBindingWindow.isLocked {
-                    Text("Locked \u{00B7} \(formatTime(nonBindingWindow.resetsAt))")
+                Text("\u{00B7}")
+                    .foregroundStyle(.quaternary)
+                Text("resets \(nonBindingWindow.resetsInFormatted)")
+                    .foregroundStyle(.quaternary)
+                if let pace = nonBindingPace, pace.showWarning {
+                    Text("\u{00B7} limit ~\(pace.limitAtFormatted)")
                         .font(.system(.caption, weight: .medium))
                         .foregroundStyle(.red)
-                } else {
-                    Text("\(Int(nonBindingWindow.utilization * 100))%")
-                        .font(.system(.caption))
-                        .foregroundStyle(.tertiary)
-                    Text("\u{00B7}")
-                        .foregroundStyle(.quaternary)
-                    Text(nonBindingWindow.resetsInFormatted)
-                        .font(.system(.caption))
-                        .foregroundStyle(.quaternary)
-                    if let pace = nonBindingPace, pace.showWarning {
-                        Text("\u{00B7} ~\(pace.limitAtFormatted)")
-                            .font(.system(.caption, weight: .medium))
-                            .foregroundStyle(.red)
-                    }
                 }
             }
-
-            if !nonBindingWindow.isLocked {
-                progressBar(utilization: nonBindingWindow.utilization, color: .green.opacity(0.4), height: 3)
-            }
         }
-    }
-
-    // MARK: - Metadata footer
-
-    private var metadataFooter: some View {
-        HStack(spacing: 0) {
-            if let sonnet = quota.sevenDaySonnet {
-                Text("Sonnet \(Int(sonnet.utilization * 100))%")
-                    .foregroundStyle(.quaternary)
-                Text("  ")
-            }
-            if quota.extraUsage.isEnabled, let used = quota.extraUsage.usedCredits, let limit = quota.extraUsage.monthlyLimit {
-                Text(String(format: "$%.0f/$%.0f", used, limit))
-                    .foregroundStyle(.quaternary)
-                Text("  ")
-            }
-            Spacer()
-            Text(quota.fetchedAt, style: .time)
-                .foregroundStyle(.quaternary)
-        }
-        .font(.system(.caption2))
     }
 
     // MARK: - Components
@@ -176,6 +249,13 @@ struct BindingView: View {
     }
 
     // MARK: - Helpers
+
+    private var sparklineHasVariation: Bool {
+        guard sparklineData.count >= 2,
+              let min = sparklineData.min(),
+              let max = sparklineData.max() else { return false }
+        return (max - min) >= 0.02
+    }
 
     private var bindingColor: Color {
         if bindingWindow.utilization >= 0.9 { return .red }
