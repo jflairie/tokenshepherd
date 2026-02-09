@@ -7,6 +7,7 @@ struct BindingView: View {
     let trend: TrendInfo?
     let sparklineData: [Double]
     let dominantModel: String?
+    let lastWindowPeak: Double?  // previous window's peak utilization
 
     private var isFiveHourBinding: Bool {
         quota.fiveHour.utilization >= quota.sevenDay.utilization
@@ -142,6 +143,10 @@ struct BindingView: View {
                     Text("resets in \(bindingWindow.resetsInFormatted)")
                         .foregroundStyle(.tertiary)
                 }
+                if let peak = lastWindowPeak {
+                    Text("\u{00B7} last peaked \(Int(peak * 100))%")
+                        .foregroundStyle(.quaternary)
+                }
                 Spacer()
                 if !bindingWindow.isLocked {
                     Text(quota.fetchedAt, style: .time)
@@ -159,9 +164,27 @@ struct BindingView: View {
                 .font(.system(.caption))
                 .foregroundStyle(.red)
         } else if let projected = projectedAtReset(window: bindingWindow) {
-            Text("on pace for ~\(Int(projected * 100))%")
-                .font(.system(.caption))
-                .foregroundStyle(projected >= 0.8 ? .orange : .secondary)
+            if projected >= 0.9 {
+                Text("on pace for ~\(Int(projected * 100))% — tight")
+                    .font(.system(.caption))
+                    .foregroundStyle(.orange)
+            } else if projected >= 0.7 {
+                Text("on pace for ~\(Int(projected * 100))%")
+                    .font(.system(.caption))
+                    .foregroundStyle(.orange)
+            } else if let trend, abs(trend.velocityPerHour) < 0.01 {
+                Text("holding steady")
+                    .font(.system(.caption))
+                    .foregroundStyle(.secondary)
+            } else if projected < 0.5 {
+                Text("plenty of room")
+                    .font(.system(.caption))
+                    .foregroundStyle(.secondary)
+            } else {
+                Text("on pace for ~\(Int(projected * 100))%")
+                    .font(.system(.caption))
+                    .foregroundStyle(.secondary)
+            }
         } else {
             EmptyView()
         }
@@ -265,10 +288,19 @@ struct BindingView: View {
 
     private func projectedAtReset(window: QuotaWindow) -> Double? {
         let timeToReset = window.resetsAt.timeIntervalSinceNow
-        guard timeToReset > 0 else { return nil }
+        guard timeToReset > 0, window.utilization > 0.01 else { return nil }
+
+        // Prefer recent velocity — reflects actual current behavior
+        if let trend, abs(trend.velocityPerHour) > 0.001 {
+            let hoursRemaining = timeToReset / 3600
+            let projected = window.utilization + (trend.velocityPerHour * hoursRemaining)
+            return max(min(projected, 1.0), window.utilization)
+        }
+
+        // Fallback: linear extrapolation from window start
         let duration = quota.bindingWindowDuration
         let elapsed = duration - timeToReset
-        guard elapsed > 60, window.utilization > 0.01 else { return nil }
+        guard elapsed > 60 else { return nil }
         let rate = window.utilization / elapsed
         return min(rate * duration, 1.0)
     }
