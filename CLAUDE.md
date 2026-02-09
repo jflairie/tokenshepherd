@@ -2,9 +2,9 @@
 
 ## What This Is
 
-Mac menu bar app for Claude Code usage monitoring, efficiency coaching, and cost optimization.
+Mac menu bar app for Claude Code usage monitoring. Native Swift/AppKit with NSMenu + SwiftUI views.
 
-**Status:** Research & Validation Phase
+**Status:** Working prototype — menu bar app shows real-time quota data.
 
 ## Philosophy
 
@@ -12,41 +12,48 @@ Mac menu bar app for Claude Code usage monitoring, efficiency coaching, and cost
 2. **Contextual value:** Information at the right moment beats documentation.
 3. **Ship fast, adapt faster:** Claude Code changes. We keep up.
 
-## Key Documents
+## Tech Stack
 
-- `RESEARCH.md` — Full product research, market analysis, technical feasibility
-- `README.md` — Project overview
-
-## Tech Stack (TBD)
-
-Candidates:
-- Swift/SwiftUI (native Mac, lightweight)
-- Tauri (cross-platform, Rust+web)
+- **Menu bar app:** Swift/AppKit (`NSStatusItem` + `NSMenu` + `NSHostingView` with SwiftUI)
+- **Data layer:** TypeScript CLI (`node dist/lib.js --quota`) — shared between CLI and menu bar
+- **Build:** Swift Package Manager (macOS 13+), npm for TypeScript
 
 ## Commands
 
-TBD once development starts.
+```bash
+make run        # Build everything and launch menu bar app
+make build      # Build Swift app only
+make cli        # Build TypeScript CLI only
+make clean      # Clean Swift build artifacts
+npm run status  # CLI quota check
+```
 
-## Architecture Notes
+## Architecture
 
-### Data Sources
-1. `~/.claude/` directory (sessions, history)
-2. OpenTelemetry metrics (if user enables)
-3. CLI output parsing (fallback)
+```
+NSStatusItem (🐑 in menu bar)
+  └── NSMenu (native appearance — vibrancy, shadow, border, auto-dismiss)
+      ├── NSMenuItem with NSHostingView(QuotaView)  ← SwiftUI content
+      ├── Refresh (⌘R)
+      └── Quit (⌘Q)
 
-### Resilience Strategy
-- Version detection on startup
-- Adapter pattern for data parsing
-- Graceful degradation if structure changes
-- 48-hour turnaround on Claude Code updates
+QuotaService:
+  Process("node", ["dist/lib.js", "--quota"])
+  → JSON → QuotaData struct
+  → Published to SwiftUI via @ObservableObject
+```
 
-## Current Phase
+### Data Source
+- OAuth token from macOS Keychain (where Claude Code stores it)
+- Anthropic quota API (`/api/oauth/usage`)
+- Auto-refresh on menu open
 
-**Validation (no code yet)**
-1. [ ] Reddit/Twitter posts to gauge interest
-2. [ ] DM users who complained about limits
-3. [ ] Landing page with email signup
-4. [ ] Goal: 50+ signups, 3+ "I'd pay" responses
+## Key Documents
+
+- `RESEARCH.md` — Product research, market analysis, technical feasibility
+- `PRODUCT_DISCOVERY.md` — Product discovery notes
+- `CLI_SPEC.md` — CLI specification
+- `README.md` — Project overview and setup
 
 ## Links
 
