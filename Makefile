@@ -1,4 +1,4 @@
-.PHONY: build run run-app clean cli
+.PHONY: build run clean
 
 APP_NAME = TokenShepherd
 APP_BUNDLE = macos/.build/$(APP_NAME).app
@@ -34,14 +34,7 @@ dist: release
 	cd macos/.build && zip -r $(APP_NAME).zip $(APP_NAME).app
 	@echo "Built: macos/.build/$(APP_NAME).zip"
 
-# Build CLI (TypeScript)
-cli:
-	npm run build
-
-# Build everything
-all: cli build
-
-# Clean Swift build artifacts
+# Clean build artifacts
 clean:
 	cd macos && swift package clean
 	rm -rf macos/.build

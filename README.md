@@ -1,27 +1,32 @@
 # TokenShepherd
 
-A guardian, not a dashboard. Mac menu bar app that watches your Claude Code quota so you don't have to.
+**A guardian, not a dashboard.** Mac menu bar app that watches your Claude Code quota so you don't have to.
 
-Green sheep = fine. Orange = heads up. Red = locked. If the sheep is calm, you never need to click.
+If the sheep is calm, you never need to click.
 
-## How It Works
+<br>
 
-TokenShepherd reads the OAuth token that Claude Code stores in your macOS Keychain, calls the Anthropic quota API, and shows you where you stand. It monitors both the 5-hour and 7-day rate limit windows, identifies which one is the binding constraint, and watches your trajectory.
+## The Icon Tells the Story
 
-The icon tells the story:
-- **Calm sheep** — you're fine, keep working
-- **Sheep + orange →92%** — your current pace projects to 92% by reset
-- **Sheep + orange 78%** — utilization is getting warm
-- **Sheep + red 94%** — running low
-- **Sheep + red 2h 15m** — locked, countdown to reset
+```
+ 🐑          All good. Keep working.
 
-Click for details: the binding window with insight text, a progress bar, sparkline history, and secondary windows at a glance.
+ 🐑→92%      Your pace projects to 92% by reset.
+              (orange — heads up)
 
-## Requirements
+ 🐑 78%      Utilization is getting warm.
+              (orange)
 
-- macOS 14+ (Sonoma or later)
-- Swift 5.9+ (comes with Xcode Command Line Tools)
-- An active [Claude Code](https://claude.ai/code) session (the app reads its OAuth token)
+ 🐑 94%      Running low.
+              (red)
+
+ 🐑 2h 15m   Locked. Countdown to reset.
+              (red)
+```
+
+That's it. Glance at the menu bar, know where you stand.
+
+<br>
 
 ## Install
 
@@ -31,18 +36,152 @@ cd tokenshepherd
 make run
 ```
 
-On first launch, macOS will ask you to allow the app since it's not notarized. Right-click the sheep in your menu bar and click Open, or go to System Settings > Privacy & Security and allow it.
+> macOS 14+ required. Swift 5.9+ comes with Xcode Command Line Tools.
+>
+> First launch: macOS will ask you to allow the unsigned app.
+> System Settings → Privacy & Security → Allow.
 
-## Usage
+<br>
 
-The app lives in your menu bar. It refreshes automatically every 60 seconds and on every menu open.
+## What You'll See
 
-**Keyboard shortcuts** (when menu is open):
-- `Cmd+C` — copy status to clipboard
-- `Cmd+R` — refresh
-- `Cmd+Q` — quit
+### When Everything Is Fine
 
-**Build commands:**
+```
+┌─────────────────────────────────────┐
+│                                     │
+│  44%  ████████████░░░░░░░░░░░░░░░░  │
+│  ▁▁▂▃▃▃▄▅▅▅▅▅▆▆▆▆                  │
+│                                     │
+│  5-hour · Opus · resets ~3:42 PM    │
+│                                     │
+│  ─────────────────────────────────  │
+│  7-day  12%  ██░░░░░░  resets Wed   │
+│                                     │
+├─────────────────────────────────────┤
+│  Copy status ⌘C        Dashboard ↗  │
+│  Refresh ⌘R               Quit ⌘Q  │
+└─────────────────────────────────────┘
+```
+
+No alarm. Context only — which window, which model, when it resets. The sparkline shows your history for this cycle.
+
+### When the Guardian Speaks
+
+```
+┌─────────────────────────────────────┐
+│                                     │
+│  Heads up                           │
+│  On pace to hit ~92% by reset       │
+│                                     │
+│  44%  ████████████░░░░░░░░░░░░░░░░  │
+│  ▁▁▂▃▃▃▄▅▅▅▅▅▆▆▆▆▇▇▇              │
+│                                     │
+│  5-hour · Opus · resets ~3:42 PM    │
+│                                     │
+│  ─────────────────────────────────  │
+│  7-day  12%  ██░░░░░░  resets Wed   │
+│                                     │
+├─────────────────────────────────────┤
+│  Copy status ⌘C        Dashboard ↗  │
+│  Refresh ⌘R               Quit ⌘Q  │
+└─────────────────────────────────────┘
+```
+
+The app watches your velocity and projects where you'll be at reset. If the trajectory looks bad, it tells you — even when utilization is low.
+
+### When You're Locked
+
+```
+┌─────────────────────────────────────┐
+│                                     │
+│  Limit reached                      │
+│  Back in 2h 15m (~5:30 PM)         │
+│                                     │
+│  ████████████████████████████████░  │
+│                                     │
+│  5-hour · resets ~5:30 PM           │
+│                                     │
+│  ─────────────────────────────────  │
+│  7-day  67%  ██████████░░░  Wed     │
+│                                     │
+├─────────────────────────────────────┤
+│  Copy status ⌘C        Dashboard ↗  │
+│  Refresh ⌘R               Quit ⌘Q  │
+└─────────────────────────────────────┘
+```
+
+<br>
+
+## Guardian Intelligence
+
+The app doesn't just show numbers. It watches your pace and speaks when there's something to say.
+
+| State | Icon | What it means |
+|:------|:-----|:--------------|
+| **Calm** | 🐑 | You're fine. Keep working. |
+| **Trajectory** | 🐑→92% | Your pace projects to 92% by reset |
+| **Warm** | 🐑 78% | Utilization above 70% |
+| **Low** | 🐑 94% | Utilization above 90% |
+| **Locked** | 🐑 2h 15m | Limit hit. Countdown to reset. |
+
+**Silence is a feature.** Most of the time the icon is a calm sheep. No number, no color, no noise. That's the point — you only look when there's something to see.
+
+**Notifications** fire once per window cycle:
+- Pace warning — on track to hit the limit
+- 90% threshold — running low
+- Locked — limit reached
+- Restored — you're back
+
+<br>
+
+## How It Works
+
+TokenShepherd reads the OAuth token that Claude Code stores in your macOS Keychain, calls the Anthropic quota API, and monitors both the **5-hour** and **7-day** rate limit windows.
+
+It identifies which window is the **binding constraint** (the one that matters right now), tracks your velocity, and projects where you'll be at reset.
+
+```
+Keychain → OAuth token
+  → Anthropic API (/api/oauth/usage)
+  → Binding constraint detection
+  → Pace projection (velocity, not naive linear)
+  → Icon + menu + notifications
+```
+
+Refreshes every 60 seconds and on every menu open.
+
+<br>
+
+## Architecture
+
+Native Swift/AppKit with SwiftUI views. No Electron, no web views, no runtime dependencies.
+
+```
+macos/Sources/TokenShepherd/
+  main.swift              — App wiring, menu construction, trajectory logic
+  Models.swift            — Data types (API, domain, history, trend)
+  KeychainService.swift   — OAuth token from macOS Keychain
+  APIService.swift        — URLSession to Anthropic quota API
+  QuotaService.swift      — Orchestrator: auth → fetch → state → timer
+  PaceCalculator.swift    — Pace projection, time-to-limit
+  TrendCalculator.swift   — Velocity from history, sparkline bucketing
+  NotificationService.swift — Threshold tracking, once-per-cycle alerts
+  HistoryStore.swift      — JSONL append/read/prune + window summaries
+  StatsCache.swift        — Reads Claude Code stats for model detection
+  BindingView.swift       — SwiftUI: guardian hero + secondary windows
+  SparklineView.swift     — SwiftUI: smooth bezier area chart
+  StatusBarIcon.swift     — Flipped sheep + colored suffix as NSImage
+```
+
+**Local storage** (`~/.tokenshepherd/`):
+- `history.jsonl` — utilization snapshots, pruned to 7 days
+- `windows.jsonl` — completed window cycle summaries
+
+<br>
+
+## Build
+
 ```bash
 make run        # Build, sign, bundle, launch
 make build      # Build Swift binary only
@@ -50,72 +189,23 @@ make dist       # Release build + zip for distribution
 make clean      # Clean build artifacts
 ```
 
-## What It Shows
+**Keyboard shortcuts** (when menu is open):
 
-**Guardian intelligence** — the app doesn't just show numbers. It watches your pace and speaks when there's something to say:
+| Key | Action |
+|:----|:-------|
+| `⌘C` | Copy status to clipboard |
+| `⌘R` | Refresh |
+| `⌘Q` | Quit |
 
-- **"Heads up"** — your trajectory projects to 90%+ by reset, even if you're at 40% now
-- **"Getting warm"** — utilization above 70%
-- **"Running low"** — utilization above 90%
-- **"Limit reached"** — locked with countdown to reset
-- *Silence* — everything is fine. The calm state shows context (window, model, reset time) without alarm.
-
-**Pace projection** — uses recent velocity (not naive linear extrapolation) to estimate where you'll be at reset. Shows "plenty of room", "holding steady", "on pace for ~X%", or "tight" depending on the outlook.
-
-**Sparkline** — shows utilization history for the current window cycle. Smooth curves, only visible when there's meaningful variation.
-
-**Notifications** — fires once per window cycle for pace warnings (>50% util + on pace to hit limit), 90% threshold, locked, and restored.
-
-## Architecture
-
-The menu bar app is native Swift/AppKit with SwiftUI views. No Electron, no Node.js runtime, no web views.
-
-```
-macos/Sources/TokenShepherd/
-  main.swift              — AppDelegate, menu construction, footer, wiring
-  Models.swift            — Data types (API response, domain models, history)
-  KeychainService.swift   — Read OAuth token from macOS Keychain
-  APIService.swift        — URLSession to Anthropic quota API + token refresh
-  QuotaService.swift      — Orchestrator: auth → fetch → history → state
-  PaceCalculator.swift    — Pace projection, time-to-limit estimates
-  TrendCalculator.swift   — Velocity from history, sparkline bucketing
-  NotificationService.swift — Threshold tracking, once-per-cycle notifications
-  HistoryStore.swift      — JSONL append/read/prune + window summaries
-  StatsCache.swift        — Reads Claude Code stats for dominant model
-  BindingView.swift       — SwiftUI: guardian-first hero + secondary windows
-  SparklineView.swift     — SwiftUI: smooth bezier area chart
-  StatusBarIcon.swift     — Renders flipped sheep + colored suffix as NSImage
-```
-
-**Data flow:**
-```
-Keychain → OAuth token
-  → Anthropic API → quota response
-  → QuotaService → domain models → @Published state
-  → Combine sink → UI + icon + notifications + history
-```
-
-**Local storage** (all in `~/.tokenshepherd/`):
-- `history.jsonl` — utilization snapshots, pruned to 7 days
-- `windows.jsonl` — summary of completed window cycles (peak, avg rate)
-
-No data leaves your machine except the API call to Anthropic.
-
-## CLI
-
-There's also a standalone TypeScript CLI if you just want a quick check:
-
-```bash
-npm install
-npm run build
-npm run status
-```
-
-The CLI and the menu bar app are independent — the menu bar app doesn't need Node.js.
+<br>
 
 ## Privacy
 
-TokenShepherd reads your Claude Code OAuth token from the macOS Keychain to authenticate with Anthropic's quota API. It makes a single GET request to `https://api.anthropic.com/api/oauth/usage`. No telemetry, no analytics, no third-party services. All history data stays local.
+One GET request to `https://api.anthropic.com/api/oauth/usage`. That's it.
+
+No telemetry. No analytics. No third-party services. All history stays on your machine.
+
+<br>
 
 ## License
 

@@ -2,15 +2,6 @@
 .DS_Store
 *.swp
 
-# Build
-build/
-dist/
-*.app
-
-# Dependencies
-node_modules/
-.build/
-
 # Swift Package Manager
 macos/.build/
 macos/.swiftpm/

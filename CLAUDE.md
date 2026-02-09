@@ -14,7 +14,6 @@ A guardian, not a dashboard. Mac menu bar app that watches your Claude Code quot
 
 - **Menu bar app:** Swift/AppKit (`NSStatusItem` + `NSMenu` + `NSHostingView` with SwiftUI)
 - **Data layer:** Native Swift (URLSession + Keychain via `security` CLI) — no Node.js dependency
-- **CLI:** TypeScript (independent tool, `npm run status`)
 - **Build:** Swift Package Manager (macOS 14+), .app bundle via Makefile
 
 ## Commands
@@ -24,7 +23,6 @@ make run        # Build, sign, bundle as .app, launch
 make build      # Build Swift binary only
 make dist       # Release build + sign + zip for distribution
 make clean      # Clean Swift build artifacts
-npm run status  # CLI quota check (independent, needs Node.js)
 ```
 
 ## Architecture
@@ -107,4 +105,3 @@ No data leaves your machine except the API call to Anthropic.
 
 - `RESEARCH.md` — Product research, market analysis, technical feasibility
 - `PRODUCT_DISCOVERY.md` — Product discovery notes
-- `CLI_SPEC.md` — CLI specification
