@@ -9,6 +9,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var cancellables = Set<AnyCancellable>()
     private var cachedDominantModel: String?
     private var statsCacheTimer: Timer?
+    private var iconProjectedUtilization: Double?
 
     private var contentItem: NSMenuItem!
     private var footerItem: NSMenuItem!
@@ -21,7 +22,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return
         }
 
-        button.title = "\u{1F411}"
+        button.image = StatusBarIcon.icon(for: .loading).image
 
         let menu = NSMenu()
         menu.delegate = self
@@ -202,6 +203,30 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let windowType = isFiveHour ? "5-hour" : "7-day"
             let lastWindowPeak = WindowSummaryStore.lastSummary(windowType: windowType)?.peakUtilization
 
+            // Compute trajectory warning for icon
+            let bindingPace = isFiveHour ? fiveHourPace : sevenDayPace
+            let paceWarning = bindingPace?.showWarning ?? false
+            var projectedUtil: Double? = nil
+            let timeToReset = bindingWindow.resetsAt.timeIntervalSinceNow
+            if timeToReset > 0, bindingWindow.utilization > 0.01,
+               let t = trend, abs(t.velocityPerHour) > 0.001 {
+                let hoursRemaining = timeToReset / 3600
+                let p = bindingWindow.utilization + (t.velocityPerHour * hoursRemaining)
+                projectedUtil = max(min(p, 1.0), bindingWindow.utilization)
+            }
+            let trajectoryWarning = projectedUtil.map { $0 >= 0.9 } ?? false
+            if bindingWindow.utilization < 0.7 {
+                if paceWarning {
+                    iconProjectedUtilization = projectedUtil ?? 1.0
+                } else if trajectoryWarning {
+                    iconProjectedUtilization = projectedUtil
+                } else {
+                    iconProjectedUtilization = nil
+                }
+            } else {
+                iconProjectedUtilization = nil
+            }
+
             let heroView = NSHostingView(rootView: BindingView(
                 quota: quota,
                 fiveHourPace: fiveHourPace,
@@ -218,8 +243,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func updateIcon(_ state: QuotaState) {
         guard let button = statusItem.button else { return }
-        let icon = StatusBarIcon.icon(for: state)
-        button.attributedTitle = icon.attributedTitle
+        let icon = StatusBarIcon.icon(for: state, projectedUtilization: iconProjectedUtilization)
+        button.image = icon.image
+        button.title = ""
     }
 }
 
@@ -261,11 +287,17 @@ struct FooterButton: View {
             Text(title)
             if let shortcut {
                 Text(shortcut)
-                    .foregroundStyle(.quaternary)
+                    .foregroundStyle(isHovered ? .tertiary : .quaternary)
             }
         }
         .font(.system(.caption))
         .foregroundStyle(isHovered ? .primary : .tertiary)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 3)
+        .background(
+            RoundedRectangle(cornerRadius: 4)
+                .fill(isHovered ? Color.primary.opacity(0.06) : .clear)
+        )
         .onHover { isHovered = $0 }
         .onTapGesture { action() }
     }

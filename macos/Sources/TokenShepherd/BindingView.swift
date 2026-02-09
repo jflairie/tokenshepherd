@@ -40,6 +40,9 @@ struct BindingView: View {
         if bindingWindow.utilization >= 0.7 {
             return ("Getting warm", .orange)
         }
+        if let projected = projectedAtReset(window: bindingWindow), projected >= 0.9 {
+            return ("Heads up", .orange)
+        }
         return nil
     }
 
@@ -50,24 +53,24 @@ struct BindingView: View {
             Rectangle()
                 .fill(.quaternary.opacity(0.5))
                 .frame(height: 0.5)
-                .padding(.vertical, 10)
+                .padding(.vertical, 12)
 
             secondaryWindows
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 12)
+        .padding(.vertical, 14)
         .frame(width: 260, alignment: .leading)
     }
 
     // MARK: - Hero
 
     private var bindingHero: some View {
-        VStack(alignment: .leading, spacing: 5) {
+        VStack(alignment: .leading, spacing: 7) {
             // Heading
             HStack(alignment: .firstTextBaseline) {
                 if bindingWindow.isLocked {
                     Text("Limit reached")
-                        .font(.system(size: 20, weight: .semibold, design: .rounded))
+                        .font(.system(size: 22, weight: .semibold, design: .rounded))
                         .foregroundStyle(.red)
                     Spacer()
                     Text("back at \(formatTime(bindingWindow.resetsAt))")
@@ -76,14 +79,11 @@ struct BindingView: View {
                 } else if let warning {
                     // Guardian speaks — verdict as heading
                     Text(warning.text)
-                        .font(.system(size: 20, weight: .semibold, design: .rounded))
+                        .font(.system(size: 22, weight: .semibold, design: .rounded))
                         .foregroundStyle(warning.color)
                     Spacer()
-                    Text("\(Int(bindingWindow.utilization * 100))%")
-                        .font(.system(size: 20, weight: .bold, design: .rounded))
-                        .foregroundStyle(.primary)
                 } else {
-                    // Calm — context as heading, number secondary
+                    // Calm — context as heading
                     HStack(spacing: 4) {
                         Text(bindingLabel)
                         if let model = dominantModel {
@@ -96,9 +96,6 @@ struct BindingView: View {
                     .font(.system(.body, weight: .medium))
                     .foregroundStyle(.secondary)
                     Spacer()
-                    Text("\(Int(bindingWindow.utilization * 100))%")
-                        .font(.system(size: 20, weight: .bold, design: .rounded))
-                        .foregroundStyle(.primary)
                 }
             }
 
@@ -116,9 +113,14 @@ struct BindingView: View {
                     .foregroundStyle(abs(trend.recentDelta) >= 0.15 ? .red : abs(trend.recentDelta) >= 0.05 ? .orange : .secondary)
             }
 
-            // Bar
+            // Utilization: percentage + bar together
             if !bindingWindow.isLocked {
-                progressBar(utilization: bindingWindow.utilization, color: bindingColor, height: 6)
+                HStack(alignment: .center, spacing: 8) {
+                    Text("\(Int(bindingWindow.utilization * 100))%")
+                        .font(.system(size: 20, weight: .heavy, design: .rounded))
+                        .foregroundStyle(.primary)
+                    progressBar(utilization: bindingWindow.utilization, color: bindingColor, height: 8)
+                }
             }
 
             // Sparkline
@@ -262,10 +264,16 @@ struct BindingView: View {
         GeometryReader { geo in
             ZStack(alignment: .leading) {
                 RoundedRectangle(cornerRadius: height / 2)
-                    .fill(.quaternary)
+                    .fill(Color.primary.opacity(0.08))
                 RoundedRectangle(cornerRadius: height / 2)
-                    .fill(color)
-                    .frame(width: max(geo.size.width * utilization, 2))
+                    .fill(
+                        LinearGradient(
+                            colors: [color.opacity(0.8), color],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .frame(width: max(geo.size.width * utilization, height))
             }
         }
         .frame(height: height)
@@ -281,8 +289,7 @@ struct BindingView: View {
     }
 
     private var bindingColor: Color {
-        if bindingWindow.utilization >= 0.9 { return .red }
-        if bindingWindow.utilization >= 0.7 { return .orange }
+        if let w = warning { return w.color }
         return .green
     }
 
