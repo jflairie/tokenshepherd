@@ -1,0 +1,115 @@
+import Foundation
+
+// MARK: - API Response Types (match JSON shape)
+
+struct APIQuotaWindow: Codable {
+    let utilization: Double  // 0-100
+    let resetsAt: String
+
+    enum CodingKeys: String, CodingKey {
+        case utilization
+        case resetsAt = "resets_at"
+    }
+}
+
+struct APIExtraUsage: Codable {
+    let isEnabled: Bool
+    let monthlyLimit: Double?
+    let usedCredits: Double?
+
+    enum CodingKeys: String, CodingKey {
+        case isEnabled = "is_enabled"
+        case monthlyLimit = "monthly_limit"
+        case usedCredits = "used_credits"
+    }
+}
+
+struct APIQuotaResponse: Codable {
+    let fiveHour: APIQuotaWindow
+    let sevenDay: APIQuotaWindow
+    let sevenDaySonnet: APIQuotaWindow?
+    let extraUsage: APIExtraUsage
+
+    enum CodingKeys: String, CodingKey {
+        case fiveHour = "five_hour"
+        case sevenDay = "seven_day"
+        case sevenDaySonnet = "seven_day_sonnet"
+        case extraUsage = "extra_usage"
+    }
+}
+
+// MARK: - Domain Models
+
+struct QuotaWindow {
+    let utilization: Double  // 0.0-1.0
+    let resetsAt: Date
+
+    var resetsInFormatted: String {
+        let interval = resetsAt.timeIntervalSinceNow
+        guard interval > 0 else { return "now" }
+        let totalMinutes = Int(interval) / 60
+        let days = totalMinutes / 1440
+        let hours = (totalMinutes % 1440) / 60
+        let minutes = totalMinutes % 60
+        if days > 0 {
+            return hours > 0 ? "\(days)d \(hours)h" : "\(days)d"
+        }
+        if hours > 0 {
+            return "\(hours)h \(minutes)m"
+        }
+        return "\(minutes)m"
+    }
+
+    var isLocked: Bool {
+        utilization >= 1.0
+    }
+}
+
+struct ExtraUsage {
+    let isEnabled: Bool
+    let monthlyLimit: Double?
+    let usedCredits: Double?
+}
+
+struct QuotaData {
+    let fiveHour: QuotaWindow
+    let sevenDay: QuotaWindow
+    let sevenDaySonnet: QuotaWindow?
+    let extraUsage: ExtraUsage
+    let fetchedAt: Date
+
+    var bindingWindow: QuotaWindow {
+        fiveHour.utilization >= sevenDay.utilization ? fiveHour : sevenDay
+    }
+}
+
+enum QuotaState {
+    case loading
+    case loaded(QuotaData)
+    case error(String)
+}
+
+// MARK: - Auth
+
+struct OAuthCredentials {
+    let accessToken: String
+    let refreshToken: String
+    let expiresAt: Date
+    let subscriptionType: String?
+    let rateLimitTier: String?
+
+    var isExpired: Bool {
+        // 5-minute buffer
+        Date().timeIntervalSince(expiresAt) > -300
+    }
+}
+
+// MARK: - History
+
+struct HistoryEntry: Codable {
+    let ts: Date
+    let fiveHourUtil: Double
+    let sevenDayUtil: Double
+    let fiveHourResetsAt: Date
+    let sevenDayResetsAt: Date
+}

@@ -14,9 +14,10 @@ Mac menu bar app for Claude Code usage monitoring. Native Swift/AppKit with NSMe
 
 ## Tech Stack
 
-- **Menu bar app:** Swift/AppKit (`NSStatusItem` + `NSMenu` + `NSHostingView` with SwiftUI)
-- **Data layer:** TypeScript CLI (`node dist/lib.js --quota`) — shared between CLI and menu bar
-- **Build:** Swift Package Manager (macOS 13+), npm for TypeScript
+- **Menu bar app:** Swift/AppKit (`NSStatusItem` + `NSMenu` + `NSHostingView` with SwiftUI + Charts)
+- **Data layer:** Native Swift (URLSession + Keychain via `security` CLI) — no Node.js dependency
+- **CLI:** TypeScript (independent tool, `npm run status`)
+- **Build:** Swift Package Manager (macOS 14+), npm for TypeScript
 
 ## Commands
 
@@ -31,22 +32,51 @@ npm run status  # CLI quota check
 ## Architecture
 
 ```
-NSStatusItem (🐑 in menu bar)
-  └── NSMenu (native appearance — vibrancy, shadow, border, auto-dismiss)
-      ├── NSMenuItem with NSHostingView(QuotaView)  ← SwiftUI content
+NSStatusItem (🐑 + dynamic % in menu bar)
+  └── NSMenu
+      ├── NSMenuItem → WindowRowView (5-Hour: %, bar, reset, pace)
+      │   └── submenu → SparklineView (24h history)
+      ├── NSMenuItem → WindowRowView (7-Day: %, bar, reset, pace)
+      │   └── submenu → SparklineView (7d history)
+      ├── separator
+      ├── "Show/Hide Details" toggle
+      ├── NSMenuItem → DetailView (sonnet, extra usage, plan, refreshed at)
+      ├── separator
       ├── Refresh (⌘R)
+      ├── separator
       └── Quit (⌘Q)
+```
 
-QuotaService:
-  Process("node", ["dist/lib.js", "--quota"])
-  → JSON → QuotaData struct
-  → Published to SwiftUI via @ObservableObject
+### File Structure
+```
+macos/Sources/TokenShepherd/
+  main.swift              — AppDelegate, NSMenu construction, icon updates
+  Models.swift            — All data types (API, domain, auth, history)
+  KeychainService.swift   — Read Claude Code OAuth token from macOS Keychain
+  APIService.swift        — URLSession GET to Anthropic quota API + token refresh
+  QuotaService.swift      — Orchestrator: auth → fetch → history → publish state
+  PaceCalculator.swift    — Binding constraint + time-to-limit math
+  HistoryStore.swift      — JSONL append/read at ~/.tokenshepherd/history.jsonl
+  WindowRowView.swift     — SwiftUI: one quota window (label, %, bar, reset, pace)
+  SparklineView.swift     — SwiftUI Charts: minimal line chart
+  DetailView.swift        — SwiftUI: Sonnet, extra usage, plan, last refreshed
+  StatusBarIcon.swift     — Pure function: QuotaState → icon title + color
+```
+
+### Data Flow
+```
+KeychainService → OAuthCredentials
+  → APIService.fetchQuota(token) → APIQuotaResponse
+  → QuotaService maps to domain models → @Published QuotaState
+  → Combine sink → updateUI() + updateIcon()
+  → HistoryStore.append() → ~/.tokenshepherd/history.jsonl
 ```
 
 ### Data Source
 - OAuth token from macOS Keychain (where Claude Code stores it)
 - Anthropic quota API (`/api/oauth/usage`)
 - Auto-refresh on menu open
+- History persisted at `~/.tokenshepherd/history.jsonl`
 
 ## Key Documents
 

@@ -1,190 +1,114 @@
 import Foundation
 import Combine
 
-struct QuotaWindow {
-    let utilization: Double
-    let resetsAt: Date
-
-    var resetsIn: String {
-        let interval = resetsAt.timeIntervalSinceNow
-        guard interval > 0 else { return "now" }
-        let hours = Int(interval) / 3600
-        let minutes = (Int(interval) % 3600) / 60
-        if hours > 0 {
-            return "\(hours)h \(minutes)m"
-        }
-        return "\(minutes)m"
-    }
-}
-
-struct ExtraUsage {
-    let isEnabled: Bool
-    let monthlyLimit: Double?
-    let usedCredits: Double?
-}
-
-struct QuotaData {
-    let fiveHour: QuotaWindow
-    let sevenDay: QuotaWindow
-    let sevenDaySonnet: QuotaWindow?
-    let extraUsage: ExtraUsage
-}
-
-enum QuotaState {
-    case loading
-    case loaded(QuotaData)
-    case error(String)
-}
-
 class QuotaService: ObservableObject {
     @Published var state: QuotaState = .loading
+    @Published var lastCredentials: OAuthCredentials?
 
-    private let nodePath: String
-    private let projectRoot: URL
-    private let libPath: String
+    private static let minRefreshInterval: TimeInterval = 30
+    private var isFetching = false
 
-    init() {
-        self.nodePath = QuotaService.findNode()
-
-        // #filePath → .../macos/Sources/TokenShepherd/QuotaService.swift
-        // Go up: QuotaService.swift → TokenShepherd → Sources → macos → project root
-        self.projectRoot = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent() // → .../macos/Sources/TokenShepherd/
-            .deletingLastPathComponent() // → .../macos/Sources/
-            .deletingLastPathComponent() // → .../macos/
-            .deletingLastPathComponent() // → .../tokenshepherd/
-        self.libPath = projectRoot.appendingPathComponent("dist/lib.js").path
-    }
+    private static let isoFormatter: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
 
     func refresh() {
-        state = .loading
+        // Skip if already fetching
+        guard !isFetching else { return }
 
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+        // Skip if data is fresh enough
+        if case .loaded(let data) = state,
+           Date().timeIntervalSince(data.fetchedAt) < Self.minRefreshInterval {
+            return
+        }
+
+        // Only show loading spinner on first fetch (no data yet)
+        if case .loaded = state {
+            // Keep showing stale data while refreshing
+        } else {
+            state = .loading
+        }
+
+        isFetching = true
+
+        Task.detached { [weak self] in
             guard let self else { return }
-
-            let result = self.runQuotaCommand()
-
-            DispatchQueue.main.async {
+            let result = await self.fetchData()
+            await MainActor.run {
                 self.state = result
+                self.isFetching = false
             }
         }
     }
 
-    private func runQuotaCommand() -> QuotaState {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: nodePath)
-        process.arguments = [libPath, "--quota"]
-        process.currentDirectoryURL = projectRoot
-
-        var env = ProcessInfo.processInfo.environment
-        if let path = env["PATH"] {
-            env["PATH"] = "/usr/local/bin:/opt/homebrew/bin:" + path
-        }
-        process.environment = env
-
-        let stdout = Pipe()
-        let stderr = Pipe()
-        process.standardOutput = stdout
-        process.standardError = stderr
-
+    private func fetchData() async -> QuotaState {
+        // 1. Read credentials from Keychain
+        let credentials: OAuthCredentials
         do {
-            try process.run()
-            process.waitUntilExit()
+            credentials = try KeychainService.readCredentials()
         } catch {
-            return .error("Failed to run node: \(error.localizedDescription)")
+            return .error(error.localizedDescription)
         }
 
-        guard process.terminationStatus == 0 else {
-            let errData = stderr.fileHandleForReading.readDataToEndOfFile()
-            let errString = String(data: errData, encoding: .utf8) ?? "Unknown error"
-            return .error(errString.trimmingCharacters(in: .whitespacesAndNewlines))
+        // 2. Refresh token if expired
+        var activeToken = credentials.accessToken
+        if credentials.isExpired {
+            NSLog("[TokenShepherd] Token expired, triggering refresh...")
+            let refreshed = await APIService.triggerTokenRefresh()
+            if refreshed {
+                // Re-read credentials after refresh
+                do {
+                    let newCreds = try KeychainService.readCredentials()
+                    activeToken = newCreds.accessToken
+                    await MainActor.run { self.lastCredentials = newCreds }
+                } catch {
+                    return .error("Token refresh succeeded but re-read failed: \(error.localizedDescription)")
+                }
+            } else {
+                return .error("Token expired and refresh failed")
+            }
+        } else {
+            await MainActor.run { self.lastCredentials = credentials }
         }
 
-        let data = stdout.fileHandleForReading.readDataToEndOfFile()
-        return parseQuotaJSON(data)
-    }
-
-    private func parseQuotaJSON(_ data: Data) -> QuotaState {
+        // 3. Fetch quota from API
+        let apiResponse: APIQuotaResponse
         do {
-            guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-                return .error("Invalid JSON response")
-            }
-
-            guard let fiveHour = parseWindow(json["five_hour"]),
-                  let sevenDay = parseWindow(json["seven_day"]) else {
-                return .error("Missing quota windows")
-            }
-
-            let sevenDaySonnet = parseWindow(json["seven_day_sonnet"])
-
-            let extra = parseExtraUsage(json["extra_usage"])
-
-            let quota = QuotaData(
-                fiveHour: fiveHour,
-                sevenDay: sevenDay,
-                sevenDaySonnet: sevenDaySonnet,
-                extraUsage: extra
-            )
-
-            return .loaded(quota)
+            apiResponse = try await APIService.fetchQuota(accessToken: activeToken)
         } catch {
-            return .error("JSON parse error: \(error.localizedDescription)")
+            return .error(error.localizedDescription)
         }
+
+        // 4. Map to domain models
+        let quotaData = mapResponse(apiResponse)
+
+        // 5. Append to history
+        HistoryStore.append(from: quotaData)
+
+        return .loaded(quotaData)
     }
 
-    private func parseWindow(_ value: Any?) -> QuotaWindow? {
-        guard let dict = value as? [String: Any],
-              let utilization = dict["utilization"] as? Double,
-              let resetsAtStr = dict["resets_at"] as? String else {
-            return nil
-        }
-
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        let date = formatter.date(from: resetsAtStr) ?? Date()
-
-        // API returns 0-100, normalize to 0-1
-        return QuotaWindow(utilization: utilization / 100.0, resetsAt: date)
-    }
-
-    private func parseExtraUsage(_ value: Any?) -> ExtraUsage {
-        guard let dict = value as? [String: Any] else {
-            return ExtraUsage(isEnabled: false, monthlyLimit: nil, usedCredits: nil)
-        }
-
-        return ExtraUsage(
-            isEnabled: dict["is_enabled"] as? Bool ?? false,
-            monthlyLimit: dict["monthly_limit"] as? Double,
-            usedCredits: dict["used_credits"] as? Double
+    private func mapResponse(_ api: APIQuotaResponse) -> QuotaData {
+        QuotaData(
+            fiveHour: mapWindow(api.fiveHour),
+            sevenDay: mapWindow(api.sevenDay),
+            sevenDaySonnet: api.sevenDaySonnet.map { mapWindow($0) },
+            extraUsage: ExtraUsage(
+                isEnabled: api.extraUsage.isEnabled,
+                monthlyLimit: api.extraUsage.monthlyLimit,
+                usedCredits: api.extraUsage.usedCredits
+            ),
+            fetchedAt: Date()
         )
     }
 
-    private static func findNode() -> String {
-        // Check common locations
-        let candidates = [
-            "/opt/homebrew/bin/node",
-            "/usr/local/bin/node",
-            "/usr/bin/node"
-        ]
-
-        for path in candidates {
-            if FileManager.default.isExecutableFile(atPath: path) {
-                return path
-            }
-        }
-
-        // Fallback: use `which`
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/which")
-        process.arguments = ["node"]
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        try? process.run()
-        process.waitUntilExit()
-
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        let path = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-
-        return path.isEmpty ? "/usr/local/bin/node" : path
+    private func mapWindow(_ api: APIQuotaWindow) -> QuotaWindow {
+        let date = Self.isoFormatter.date(from: api.resetsAt) ?? Date()
+        return QuotaWindow(
+            utilization: api.utilization / 100.0,
+            resetsAt: date
+        )
     }
 }
