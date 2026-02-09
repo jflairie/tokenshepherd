@@ -112,6 +112,12 @@ struct OAuthCredentials {
     }
 }
 
+// MARK: - Date Utilities
+
+func datesMatchWithinTolerance(_ a: Date, _ b: Date, tolerance: TimeInterval = 60) -> Bool {
+    abs(a.timeIntervalSince(b)) <= tolerance
+}
+
 // MARK: - History
 
 struct HistoryEntry: Codable {
@@ -120,4 +126,23 @@ struct HistoryEntry: Codable {
     let sevenDayUtil: Double
     let fiveHourResetsAt: Date
     let sevenDayResetsAt: Date
+}
+
+// MARK: - Trend
+
+struct TrendInfo {
+    let velocityPerHour: Double  // utilization delta per hour
+    let recentDelta: Double      // absolute delta over lookback period
+    let lookbackMinutes: Int
+}
+
+// MARK: - Window Summary
+
+struct WindowSummary: Codable {
+    let closedAt: Date
+    let windowType: String       // "5-hour" or "7-day"
+    let peakUtilization: Double
+    let avgRate: Double          // utilization per hour
+    let entryCount: Int
+    let wasLocked: Bool
 }

@@ -72,7 +72,7 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate {
         state: inout WindowNotificationState?
     ) {
         // Reset tracking when window cycle changes
-        if let existing = state, existing.resetsAt != window.resetsAt {
+        if let existing = state, !datesMatchWithinTolerance(existing.resetsAt, window.resetsAt) {
             // Check for restored notification before resetting
             if existing.wasLocked && !window.isLocked {
                 send(
