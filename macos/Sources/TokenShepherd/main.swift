@@ -84,6 +84,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         quotaService.startBackgroundRefresh()
 
+        // Housekeeping
+        HistoryStore.prune()
+
         // Load dominant model from Claude Code stats
         cachedDominantModel = StatsCache.dominantModel()
         statsCacheTimer = Timer.scheduledTimer(withTimeInterval: 600, repeats: true) { [weak self] _ in
@@ -196,13 +199,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 windowEnd: bindingWindow.resetsAt
             )
 
+            let windowType = isFiveHour ? "5-hour" : "7-day"
+            let lastWindowPeak = WindowSummaryStore.lastSummary(windowType: windowType)?.peakUtilization
+
             let heroView = NSHostingView(rootView: BindingView(
                 quota: quota,
                 fiveHourPace: fiveHourPace,
                 sevenDayPace: sevenDayPace,
                 trend: trend,
                 sparklineData: sparklineData,
-                dominantModel: cachedDominantModel
+                dominantModel: cachedDominantModel,
+                lastWindowPeak: lastWindowPeak
             ))
             heroView.frame.size = heroView.fittingSize
             contentItem.view = heroView

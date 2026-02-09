@@ -53,6 +53,27 @@ struct HistoryStore {
         }
     }
 
+    /// Prune entries older than 7 days. Call on startup.
+    static func prune() {
+        let cutoff = Date().addingTimeInterval(-7 * 86400)
+        let entries = read(since: cutoff)
+        guard !entries.isEmpty else { return }
+
+        do {
+            let encoder = JSONEncoder()
+            encoder.dateEncodingStrategy = .iso8601
+            let lines = entries.compactMap { entry -> String? in
+                guard let data = try? encoder.encode(entry) else { return nil }
+                return String(data: data, encoding: .utf8)
+            }
+            try lines.joined(separator: "\n").appending("\n")
+                .write(to: fileURL, atomically: true, encoding: .utf8)
+            NSLog("[TokenShepherd] Pruned history to \(entries.count) entries")
+        } catch {
+            NSLog("[TokenShepherd] History prune error: \(error.localizedDescription)")
+        }
+    }
+
     /// Read history entries belonging to a specific window cycle (matched by resetsAt within tolerance).
     static func readForWindow(
         resetsAt: Date,
@@ -72,6 +93,23 @@ struct WindowSummaryStore {
     private static let directoryURL = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent(".tokenshepherd")
     private static let fileURL = directoryURL.appendingPathComponent("windows.jsonl")
+
+    static func read() -> [WindowSummary] {
+        guard let data = try? String(contentsOf: fileURL, encoding: .utf8) else {
+            return []
+        }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return data.split(separator: "\n").compactMap { line in
+            guard let lineData = line.data(using: .utf8) else { return nil }
+            return try? decoder.decode(WindowSummary.self, from: lineData)
+        }
+    }
+
+    /// Most recent summary for a given window type.
+    static func lastSummary(windowType: String) -> WindowSummary? {
+        read().filter { $0.windowType == windowType }.last
+    }
 
     static func append(_ summary: WindowSummary) {
         do {
