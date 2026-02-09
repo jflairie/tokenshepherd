@@ -11,11 +11,16 @@ dist/
 node_modules/
 .build/
 
+# Swift Package Manager
+macos/.build/
+macos/.swiftpm/
+
 # IDE
 .idea/
 .vscode/
 *.xcworkspace/
 *.xcuserdata/
+*.xcodeproj/
 
 # Environment
 .env
