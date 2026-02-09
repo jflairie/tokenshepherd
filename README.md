@@ -1,119 +1,125 @@
 # TokenShepherd
 
-Real-time Claude Code quota monitoring from your Mac menu bar.
+A guardian, not a dashboard. Mac menu bar app that watches your Claude Code quota so you don't have to.
 
-## What It Does
+Green sheep = fine. Orange = heads up. Red = locked. If the sheep is calm, you never need to click.
 
-Native macOS menu bar app that shows your Claude Code quota at a glance — 5-hour window, 7-day window, Sonnet usage, reset times. Click the 🐑, see where you stand.
+## How It Works
 
-Also includes a CLI:
+TokenShepherd reads the OAuth token that Claude Code stores in your macOS Keychain, calls the Anthropic quota API, and shows you where you stand. It monitors both the 5-hour and 7-day rate limit windows, identifies which one is the binding constraint, and watches your trajectory.
 
-```bash
-$ ts status
+The icon tells the story:
+- **Calm sheep** — you're fine, keep working
+- **Sheep + orange →92%** — your current pace projects to 92% by reset
+- **Sheep + orange 78%** — utilization is getting warm
+- **Sheep + red 94%** — running low
+- **Sheep + red 2h 15m** — locked, countdown to reset
 
-╭──────────────────────────────────────────╮
-│ ●  TokenShepherd (max)                   │
-│                                          │
-│ 5-Hour Window                            │
-│ █░░░░░░░░░░░░░░░░░░░  7%                 │
-│ Resets: tomorrow at 2:00 AM              │
-│                                          │
-│ 7-Day Window                             │
-│ ████████░░░░░░░░░░░░  39%                │
-│ Resets: Thursday at 1:00 PM              │
-│                                          │
-│ ✓ Quota healthy                          │
-│ 5hr resets in: 2h 43m                    │
-╰──────────────────────────────────────────╯
-```
+Click for details: the binding window with insight text, a progress bar, sparkline history, and secondary windows at a glance.
 
-## Why This Exists
+## Requirements
 
-**ccusage** shows historical token counts. Good for flexing, not for planning.
+- macOS 14+ (Sonoma or later)
+- Swift 5.9+ (comes with Xcode Command Line Tools)
+- An active [Claude Code](https://claude.ai/code) session (the app reads its OAuth token)
 
-**TokenShepherd** shows real-time quota percentages. Know exactly where you stand.
-
-| ccusage | TokenShepherd |
-|---------|---------------|
-| "You used 847k tokens" | "You're at 39% of 7-day quota" |
-| Historical only | Real-time API |
-| Token counts | Percentage + reset times |
-
-## Setup
+## Install
 
 ```bash
 git clone https://github.com/jflairie/tokenshepherd
 cd tokenshepherd
-npm install
-npm run build
-```
-
-**Requirements:**
-- macOS 13+ (Ventura or later)
-- Node.js 18+
-- Swift 5.9+ (comes with Xcode / Command Line Tools)
-- Logged into Claude Code (`claude` CLI)
-
-## Menu Bar App
-
-```bash
-# Build and run
 make run
-
-# Or step by step
-make cli      # build TypeScript CLI
-make build    # build Swift app
-make run      # both + launch
 ```
 
-Click the 🐑 in your menu bar to see quota. It refreshes automatically when you open the menu.
+On first launch, macOS will ask you to allow the app since it's not notarized. Right-click the sheep in your menu bar and click Open, or go to System Settings > Privacy & Security and allow it.
 
-## CLI
+## Usage
 
+The app lives in your menu bar. It refreshes automatically every 60 seconds and on every menu open.
+
+**Keyboard shortcuts** (when menu is open):
+- `Cmd+C` — copy status to clipboard
+- `Cmd+R` — refresh
+- `Cmd+Q` — quit
+
+**Build commands:**
 ```bash
-# Show quota status
-ts status
-
-# Raw JSON
-ts status --raw
-
-# Help
-ts --help
+make run        # Build, sign, bundle, launch
+make build      # Build Swift binary only
+make dist       # Release build + zip for distribution
+make clean      # Clean build artifacts
 ```
 
-## How It Works
+## What It Shows
 
-1. Reads OAuth token from macOS Keychain (where Claude Code stores it)
-2. Calls Anthropic's quota API (`/api/oauth/usage`)
-3. Displays real-time utilization percentages
+**Guardian intelligence** — the app doesn't just show numbers. It watches your pace and speaks when there's something to say:
 
-The menu bar app is native Swift/AppKit — `NSStatusItem` + `NSMenu` + SwiftUI views via `NSHostingView`. Looks identical to system menus. The Swift app shells out to the TypeScript CLI for data fetching.
+- **"Heads up"** — your trajectory projects to 90%+ by reset, even if you're at 40% now
+- **"Getting warm"** — utilization above 70%
+- **"Running low"** — utilization above 90%
+- **"Limit reached"** — locked with countdown to reset
+- *Silence* — everything is fine. The calm state shows context (window, model, reset time) without alarm.
+
+**Pace projection** — uses recent velocity (not naive linear extrapolation) to estimate where you'll be at reset. Shows "plenty of room", "holding steady", "on pace for ~X%", or "tight" depending on the outlook.
+
+**Sparkline** — shows utilization history for the current window cycle. Smooth curves, only visible when there's meaningful variation.
+
+**Notifications** — fires once per window cycle for pace warnings (>50% util + on pace to hit limit), 90% threshold, locked, and restored.
+
+## Architecture
+
+The menu bar app is native Swift/AppKit with SwiftUI views. No Electron, no Node.js runtime, no web views.
+
+```
+macos/Sources/TokenShepherd/
+  main.swift              — AppDelegate, menu construction, footer, wiring
+  Models.swift            — Data types (API response, domain models, history)
+  KeychainService.swift   — Read OAuth token from macOS Keychain
+  APIService.swift        — URLSession to Anthropic quota API + token refresh
+  QuotaService.swift      — Orchestrator: auth → fetch → history → state
+  PaceCalculator.swift    — Pace projection, time-to-limit estimates
+  TrendCalculator.swift   — Velocity from history, sparkline bucketing
+  NotificationService.swift — Threshold tracking, once-per-cycle notifications
+  HistoryStore.swift      — JSONL append/read/prune + window summaries
+  StatsCache.swift        — Reads Claude Code stats for dominant model
+  BindingView.swift       — SwiftUI: guardian-first hero + secondary windows
+  SparklineView.swift     — SwiftUI: smooth bezier area chart
+  StatusBarIcon.swift     — Renders flipped sheep + colored suffix as NSImage
+```
+
+**Data flow:**
+```
+Keychain → OAuth token
+  → Anthropic API → quota response
+  → QuotaService → domain models → @Published state
+  → Combine sink → UI + icon + notifications + history
+```
+
+**Local storage** (all in `~/.tokenshepherd/`):
+- `history.jsonl` — utilization snapshots, pruned to 7 days
+- `windows.jsonl` — summary of completed window cycles (peak, avg rate)
 
 No data leaves your machine except the API call to Anthropic.
 
-## Project Structure
+## CLI
 
-```
-tokenshepherd/
-├── macos/                        # Native Swift menu bar app
-│   ├── Package.swift             # SPM manifest
-│   └── Sources/TokenShepherd/
-│       ├── main.swift            # App entry, NSStatusItem + NSMenu
-│       ├── QuotaView.swift       # SwiftUI quota display
-│       └── QuotaService.swift    # Calls node, parses JSON
-├── src/                          # TypeScript CLI
-│   ├── api/
-│   │   ├── auth.ts              # Keychain, token refresh
-│   │   └── quota.ts             # Anthropic API client
-│   ├── lib.ts                   # Shared core (used by Swift app)
-│   └── index.ts                 # CLI entry
-├── dist/                         # Compiled TypeScript
-└── Makefile                      # Build targets
+There's also a standalone TypeScript CLI if you just want a quick check:
+
+```bash
+npm install
+npm run build
+npm run status
 ```
 
-## Feedback
+The CLI and the menu bar app are independent — the menu bar app doesn't need Node.js.
 
-Found this useful? [Open an issue](https://github.com/jflairie/tokenshepherd/issues) or DM me.
+## Privacy
+
+TokenShepherd reads your Claude Code OAuth token from the macOS Keychain to authenticate with Anthropic's quota API. It makes a single GET request to `https://api.anthropic.com/api/oauth/usage`. No telemetry, no analytics, no third-party services. All history data stays local.
+
+## License
+
+MIT
 
 ---
 
