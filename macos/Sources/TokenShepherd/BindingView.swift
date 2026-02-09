@@ -21,13 +21,6 @@ struct BindingView: View {
     private var nonBindingPace: PaceInfo? {
         isFiveHourBinding ? sevenDayPace : fiveHourPace
     }
-    private var bindingLabel: String {
-        isFiveHourBinding ? "5-hour" : "7-day"
-    }
-    private var nonBindingLabel: String {
-        isFiveHourBinding ? "7-day" : "5-hour"
-    }
-
     // Guardian state: only speaks when there's something to say
     private var warning: (text: String, color: Color)? {
         if let pace = bindingPace, pace.showWarning {
@@ -65,9 +58,9 @@ struct BindingView: View {
 
     private var bindingHero: some View {
         VStack(alignment: .leading, spacing: 7) {
-            // Heading
-            HStack(alignment: .firstTextBaseline) {
-                if bindingWindow.isLocked {
+            if bindingWindow.isLocked {
+                // Locked
+                HStack(alignment: .firstTextBaseline) {
                     Text("Limit reached")
                         .font(.system(size: 22, weight: .semibold, design: .rounded))
                         .foregroundStyle(.red)
@@ -75,102 +68,70 @@ struct BindingView: View {
                     Text("back at \(formatTime(bindingWindow.resetsAt))")
                         .font(.system(.callout, weight: .medium))
                         .foregroundStyle(.red)
-                } else if let warning {
-                    // Guardian speaks — verdict as heading
-                    Text(warning.text)
-                        .font(.system(size: 22, weight: .semibold, design: .rounded))
-                        .foregroundStyle(warning.color)
-                    Spacer()
-                } else {
-                    // Calm — context as heading
-                    HStack(spacing: 4) {
-                        Text(bindingLabel)
-                        if let model = dominantModel {
-                            Text("\u{00B7}")
-                                .foregroundStyle(.tertiary)
-                            Text(model)
-                                .foregroundStyle(.tertiary)
-                        }
-                    }
-                    .font(.system(.body, weight: .medium))
-                    .foregroundStyle(.secondary)
-                    Spacer()
                 }
-            }
+            } else {
+                // Projection — the hero
+                projectionLine
 
-            // Insight
-            if !bindingWindow.isLocked {
-                bindingInsight
-            }
-
-            // Utilization: percentage + bar together
-            if !bindingWindow.isLocked {
-                HStack(alignment: .center, spacing: 8) {
+                // Bar with small current %
+                HStack(alignment: .center, spacing: 6) {
+                    progressBar(utilization: bindingWindow.utilization, color: bindingColor, height: 6)
                     Text("\(Int(bindingWindow.utilization * 100))%")
-                        .font(.system(size: 20, weight: .heavy, design: .rounded))
-                        .foregroundStyle(.primary)
-                    progressBar(utilization: bindingWindow.utilization, color: bindingColor, height: 8)
+                        .font(.system(.caption, weight: .medium))
+                        .foregroundStyle(.tertiary)
+                        .frame(width: 30, alignment: .trailing)
+                }
+
+                // Sparkline
+                if sparklineHasVariation {
+                    SparklineView(data: sparklineData, color: bindingColor)
                 }
             }
-
-            // Sparkline
-            if sparklineHasVariation {
-                SparklineView(data: sparklineData, color: bindingColor)
-            }
-
-            // Context line
-            HStack {
-                if warning != nil {
-                    // Warning: full context here (heading was the verdict)
-                    Text(bindingLabel)
-                        .foregroundStyle(.secondary)
-                    if let model = dominantModel {
-                        Text("\u{00B7} \(model)")
-                            .foregroundStyle(.tertiary)
-                    }
-                    Text("\u{00B7} resets in \(bindingWindow.resetsInFormatted)")
-                        .foregroundStyle(.tertiary)
-                } else if !bindingWindow.isLocked {
-                    // Calm: heading already has window label, just show reset
-                    Text("resets in \(bindingWindow.resetsInFormatted)")
-                        .foregroundStyle(.tertiary)
-                }
-                Spacer()
-            }
-            .font(.system(.caption2))
         }
     }
 
     @ViewBuilder
-    private var bindingInsight: some View {
+    private var projectionLine: some View {
         if let pace = bindingPace, pace.showWarning {
-            Text("limit ~\(pace.limitAtFormatted)")
-                .font(.system(.caption))
-                .foregroundStyle(.red)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Text("~\(Int(bindingWindow.utilization * 100))%")
+                        .font(.system(size: 20, weight: .heavy, design: .rounded))
+                        .foregroundStyle(.red)
+                    Text("→ limit ~\(pace.limitAtFormatted)")
+                        .font(.system(.callout, weight: .medium))
+                        .foregroundStyle(.red)
+                }
+                modelLabel
+            }
         } else if let projected = projectedAtReset(window: bindingWindow) {
-            if projected >= 0.9 {
-                Text("on pace for ~\(Int(projected * 100))% — tight")
-                    .font(.system(.caption))
-                    .foregroundStyle(.orange)
-            } else if projected >= 0.7 {
-                Text("on pace for ~\(Int(projected * 100))%")
-                    .font(.system(.caption))
-                    .foregroundStyle(.orange)
-            } else if let trend, abs(trend.velocityPerHour) < 0.01 {
-                Text("holding steady")
-                    .font(.system(.caption))
-                    .foregroundStyle(.secondary)
-            } else if projected < 0.5 {
-                Text("plenty of room")
-                    .font(.system(.caption))
-                    .foregroundStyle(.secondary)
-            } else {
-                Text("on pace for ~\(Int(projected * 100))%")
-                    .font(.system(.caption))
-                    .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Text("~\(Int(projected * 100))%")
+                        .font(.system(size: 20, weight: .heavy, design: .rounded))
+                        .foregroundStyle(projected >= 0.9 ? .orange : .primary)
+                    Text("by \(formatTime(bindingWindow.resetsAt))")
+                        .font(.system(.callout, weight: .medium))
+                        .foregroundStyle(projected >= 0.9 ? .orange : .secondary)
+                }
+                modelLabel
             }
         } else {
-            EmptyView()
+            VStack(alignment: .leading, spacing: 2) {
+                Text("resets \(formatTime(bindingWindow.resetsAt))")
+                    .font(.system(.body, weight: .medium))
+                    .foregroundStyle(.secondary)
+                modelLabel
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var modelLabel: some View {
+        if let model = dominantModel {
+            Text(model)
+                .font(.system(.caption2))
+                .foregroundStyle(.tertiary)
         }
     }
 
@@ -179,7 +140,7 @@ struct BindingView: View {
     private var secondaryWindows: some View {
         VStack(alignment: .leading, spacing: 6) {
             secondaryRow(
-                label: nonBindingLabel,
+                label: "resets \(formatTime(nonBindingWindow.resetsAt))",
                 content: nonBindingContent
             )
 
@@ -217,20 +178,13 @@ struct BindingView: View {
     @ViewBuilder
     private var nonBindingContent: some View {
         if nonBindingWindow.isLocked {
-            Text("Locked \u{00B7} \(formatTime(nonBindingWindow.resetsAt))")
+            Text("Locked")
                 .font(.system(.caption, weight: .medium))
                 .foregroundStyle(.red)
-        } else if nonBindingWindow.utilization < 0.01 {
-            Text("Fresh \u{00B7} resets \(nonBindingWindow.resetsInFormatted)")
-                .foregroundStyle(.green.opacity(0.7))
         } else {
             HStack(spacing: 4) {
                 Text("\(Int(nonBindingWindow.utilization * 100))%")
                     .foregroundStyle(.tertiary)
-                Text("\u{00B7}")
-                    .foregroundStyle(.quaternary)
-                Text("resets \(nonBindingWindow.resetsInFormatted)")
-                    .foregroundStyle(.quaternary)
                 if let pace = nonBindingPace, pace.showWarning {
                     Text("\u{00B7} limit ~\(pace.limitAtFormatted)")
                         .font(.system(.caption, weight: .medium))
@@ -272,6 +226,10 @@ struct BindingView: View {
 
     private var bindingColor: Color {
         if let w = warning { return w.color }
+        if let projected = projectedAtReset(window: bindingWindow) {
+            if projected >= 0.9 { return .orange }
+            if projected >= 0.7 { return .orange }
+        }
         return .green
     }
 
@@ -294,17 +252,4 @@ struct BindingView: View {
         return min(rate * duration, 1.0)
     }
 
-    private func formatTime(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale.current
-        let calendar = Calendar.current
-        if calendar.isDate(date, inSameDayAs: Date()) {
-            formatter.dateFormat = "h:mm a"
-        } else if calendar.isDate(date, inSameDayAs: calendar.date(byAdding: .day, value: 1, to: Date())!) {
-            formatter.dateFormat = "'tomorrow' h:mm a"
-        } else {
-            formatter.dateFormat = "EEE h:mm a"
-        }
-        return formatter.string(from: date)
-    }
 }

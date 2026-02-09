@@ -82,10 +82,6 @@ struct QuotaData {
         fiveHour.utilization >= sevenDay.utilization ? fiveHour : sevenDay
     }
 
-    var bindingWindowLabel: String {
-        fiveHour.utilization >= sevenDay.utilization ? "5-hour window" : "7-day window"
-    }
-
     var bindingWindowDuration: TimeInterval {
         fiveHour.utilization >= sevenDay.utilization ? 18_000 : 604_800
     }
@@ -145,4 +141,20 @@ struct WindowSummary: Codable {
     let avgRate: Double          // utilization per hour
     let entryCount: Int
     let wasLocked: Bool
+}
+
+// MARK: - Formatting
+
+func formatTime(_ date: Date) -> String {
+    let formatter = DateFormatter()
+    formatter.locale = Locale.current
+    let calendar = Calendar.current
+    if calendar.isDate(date, inSameDayAs: Date()) {
+        formatter.dateFormat = "h:mm a"
+    } else if calendar.isDate(date, inSameDayAs: calendar.date(byAdding: .day, value: 1, to: Date())!) {
+        formatter.dateFormat = "'tomorrow' h:mm a"
+    } else {
+        formatter.dateFormat = "EEE h:mm a"
+    }
+    return formatter.string(from: date)
 }

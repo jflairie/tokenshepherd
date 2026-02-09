@@ -37,7 +37,7 @@ make clean      # Clean Swift build artifacts
 ```
 macos/Sources/TokenShepherd/
   main.swift              — AppDelegate, menu construction, footer, wiring
-  Models.swift            — All data types (API response, domain, auth, history, trend, window summary)
+  Models.swift            — All data types (API response, domain, auth, history, trend, window summary) + shared formatTime
   KeychainService.swift   — Read Claude Code OAuth token from macOS Keychain
   APIService.swift        — URLSession GET to Anthropic quota API + token refresh
   QuotaService.swift      — Orchestrator: auth → fetch → history → publish state + 60s timer
@@ -70,13 +70,13 @@ The app doesn't just show numbers. It watches your pace and speaks when there's 
 
 | State | Icon | Menu heading | Triggers when |
 |---|---|---|---|
-| Calm | Sheep (no suffix) | Context: window, model, reset time | Utilization < 70%, no trajectory concern |
+| Calm | Sheep (no suffix) | "Opus · resets in 2h 30m" | Utilization < 70%, no trajectory concern |
 | Trajectory | Sheep orange-tinted (no suffix) | "Heads up" | Pace projects to 90%+ at reset, util still < 70% |
 | Getting warm | `78%` orange | "Getting warm" | Utilization 70-89% |
 | Running low | `94%` red | "Running low" | Utilization 90-99% |
 | Locked | `2h 15m` red | "Limit reached" | Utilization 100% |
 
-Icon shows current state (ambient). Menu heading shows full analysis including trajectory (focused attention). Notification bridges the gap — proactive alert, fires once.
+Icon shows current state (ambient). Menu heading shows model + reset time when calm, verdict when warning. Insight line is silent when projected < 70%. Secondary windows only appear when concerning (locked, >= 70%, or pace warning).
 
 ### Notification Thresholds
 | Trigger | Condition | Fires once per |
@@ -98,7 +98,8 @@ No data leaves your machine except the API call to Anthropic.
 
 - **Fuzzy date matching:** API `resetsAt` oscillates by ~1s between fetches. All date comparisons use 60s tolerance.
 - **Single NSImage icon:** Sheep emoji flipped via CGContext transform, rendered with colored suffix as one image. No gaps, no confusion with system icons.
-- **Guardian-first UI:** Heading shows verdict ("Heads up", "Running low") when there's a warning. Shows context (window type, model, reset time) when calm. The app speaks when it has something to say.
+- **Guardian-first UI:** Heading shows verdict ("Heads up", "Running low") when there's a warning. Shows model + reset time when calm. No window type jargon ("5-hour"/"7-day") — users see reset times, not implementation details. Secondary windows hidden when not concerning.
+- **Silent insight:** Insight line only speaks when projected >= 70%. No "holding steady", "plenty of room" — silence IS the calm state.
 - **Trajectory projection:** Uses trend velocity, not naive linear extrapolation. Projects utilization at reset time. Surfaces in menu insight and notifications — not in the icon (icon shows current state only).
 
 ## Key Documents

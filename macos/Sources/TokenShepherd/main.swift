@@ -100,20 +100,21 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc func copyStatus() {
         guard case .loaded(let quota) = quotaService.state else { return }
-        let isFiveHour = quota.fiveHour.utilization >= quota.sevenDay.utilization
-        let bindingLabel = isFiveHour ? "5-hour" : "7-day"
         let binding = quota.bindingWindow
-        let nonBindingLabel = isFiveHour ? "7-day" : "5-hour"
+        let isFiveHour = quota.fiveHour.utilization >= quota.sevenDay.utilization
         let nonBinding = isFiveHour ? quota.sevenDay : quota.fiveHour
 
-        var parts = ["\(bindingLabel): \(Int(binding.utilization * 100))%"]
-        if !binding.isLocked {
-            parts.append("resets in \(binding.resetsInFormatted)")
+        let bindingPart: String
+        if binding.isLocked {
+            bindingPart = "Locked \u{00B7} back at \(formatTime(binding.resetsAt))"
+        } else {
+            bindingPart = "\(Int(binding.utilization * 100))% \u{00B7} resets \(formatTime(binding.resetsAt))"
         }
-        parts.append("| \(nonBindingLabel): \(Int(nonBinding.utilization * 100))%")
+
+        let nonBindingPart = "\(Int(nonBinding.utilization * 100))% \u{00B7} resets \(formatTime(nonBinding.resetsAt))"
 
         NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(parts.joined(separator: " "), forType: .string)
+        NSPasteboard.general.setString("\(bindingPart) | \(nonBindingPart)", forType: .string)
     }
 
     @objc func openDashboard() {

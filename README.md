@@ -44,20 +44,17 @@ make run
 ```
 ┌─────────────────────────────────────┐
 │                                     │
+│  Opus · resets in 2h 30m            │
+│                                     │
 │  44%  ████████████░░░░░░░░░░░░░░░░  │
 │  ▁▁▂▃▃▃▄▅▅▅▅▅▆▆▆▆                  │
-│                                     │
-│  5-hour · Opus · resets ~3:42 PM    │
-│                                     │
-│  ─────────────────────────────────  │
-│  7-day  12%  ██░░░░░░  resets Wed   │
 │                                     │
 ├─────────────────────────────────────┤
 │  ↻  Copy status  Dashboard ↗  30s  │
 └─────────────────────────────────────┘
 ```
 
-No alarm. Context only — which window, which model, when it resets. The sparkline shows your history for this cycle.
+No alarm. Just your model, when it resets, and a sparkline of this cycle. Secondary windows only appear when they need attention.
 
 ### When the Guardian Speaks
 
@@ -65,15 +62,12 @@ No alarm. Context only — which window, which model, when it resets. The sparkl
 ┌─────────────────────────────────────┐
 │                                     │
 │  Heads up                           │
-│  On pace to hit ~92% by reset       │
+│  on pace for ~92% — tight           │
 │                                     │
 │  44%  ████████████░░░░░░░░░░░░░░░░  │
 │  ▁▁▂▃▃▃▄▅▅▅▅▅▆▆▆▆▇▇▇              │
 │                                     │
-│  5-hour · Opus · resets ~3:42 PM    │
-│                                     │
-│  ─────────────────────────────────  │
-│  7-day  12%  ██░░░░░░  resets Wed   │
+│  Opus · resets in 2h 30m            │
 │                                     │
 ├─────────────────────────────────────┤
 │  ↻  Copy status  Dashboard ↗  30s  │
@@ -87,15 +81,12 @@ The app watches your velocity and projects where you'll be at reset. If the traj
 ```
 ┌─────────────────────────────────────┐
 │                                     │
-│  Limit reached                      │
-│  Back in 2h 15m (~5:30 PM)         │
+│  Limit reached        back at 5:30  │
 │                                     │
 │  ████████████████████████████████░  │
 │                                     │
-│  5-hour · resets ~5:30 PM           │
-│                                     │
 │  ─────────────────────────────────  │
-│  7-day  67%  ██████████░░░  Wed     │
+│  resets Wed 3:45 PM     67%         │
 │                                     │
 ├─────────────────────────────────────┤
 │  ↻  Copy status  Dashboard ↗  30s  │
@@ -127,9 +118,9 @@ The app doesn't just show numbers. It watches your pace and speaks when there's 
 
 ## How It Works
 
-TokenShepherd reads the OAuth token that Claude Code stores in your macOS Keychain, calls the Anthropic quota API, and monitors both the **5-hour** and **7-day** rate limit windows.
+TokenShepherd reads the OAuth token that Claude Code stores in your macOS Keychain, calls the Anthropic quota API, and monitors your rate limit windows.
 
-It identifies which window is the **binding constraint** (the one that matters right now), tracks your velocity, and projects where you'll be at reset.
+It identifies which window is the **binding constraint** (the one closest to limiting you), tracks your velocity, and projects where you'll be at reset.
 
 ```
 Keychain → OAuth token

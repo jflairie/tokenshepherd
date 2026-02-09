@@ -51,14 +51,12 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate {
         evaluateWindow(
             window: data.fiveHour,
             pace: fiveHourPace,
-            label: "5-hour",
             id: "five-hour",
             state: &fiveHourState
         )
         evaluateWindow(
             window: data.sevenDay,
             pace: sevenDayPace,
-            label: "7-day",
             id: "seven-day",
             state: &sevenDayState
         )
@@ -67,7 +65,6 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate {
     private func evaluateWindow(
         window: QuotaWindow,
         pace: PaceInfo?,
-        label: String,
         id: String,
         state: inout WindowNotificationState?
     ) {
@@ -122,13 +119,13 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate {
             send(
                 id: "\(id)-pace",
                 title: "TokenShepherd",
-                body: "At current pace, \(label) limit around \(pace.limitAtFormatted). Resets in \(window.resetsInFormatted)."
+                body: "At current pace, limit around \(pace.limitAtFormatted). Resets in \(window.resetsInFormatted)."
             )
         case .runningLow:
             send(
                 id: "\(id)-low",
                 title: "TokenShepherd",
-                body: "\(label.capitalized) window at 90%. Resets in \(window.resetsInFormatted)."
+                body: "At \(Int(window.utilization * 100))%. Resets in \(window.resetsInFormatted)."
             )
         case .locked:
             send(
@@ -163,20 +160,6 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate {
                 NSLog("[TokenShepherd] Sent notification: \(body)")
             }
         }
-    }
-
-    private func formatTime(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale.current
-        let calendar = Calendar.current
-        if calendar.isDate(date, inSameDayAs: Date()) {
-            formatter.dateFormat = "h:mm a"
-        } else if calendar.isDate(date, inSameDayAs: calendar.date(byAdding: .day, value: 1, to: Date())!) {
-            formatter.dateFormat = "'tomorrow' h:mm a"
-        } else {
-            formatter.dateFormat = "EEE h:mm a"
-        }
-        return formatter.string(from: date)
     }
 
     // Show notifications even when app is in foreground
