@@ -9,7 +9,7 @@ struct StatusBarIcon {
     private static let sheepFont = NSFont.systemFont(ofSize: 16)
     private static let suffixFont = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .medium)
 
-    static func icon(for state: QuotaState, projectedUtilization: Double? = nil) -> Result {
+    static func icon(for state: QuotaState, showTrajectory: Bool = false) -> Result {
         switch state {
         case .loading, .error:
             return Result(image: renderIcon(suffix: nil, color: nil))
@@ -31,8 +31,8 @@ struct StatusBarIcon {
                 return Result(image: renderIcon(suffix: "\(Int(util * 100))%", color: .systemOrange))
             }
 
-            if let projected = projectedUtilization {
-                return Result(image: renderIcon(suffix: "\u{2192}\(Int(projected * 100))%", color: .systemOrange))
+            if showTrajectory {
+                return Result(image: renderIcon(suffix: "\u{2197}", color: .systemOrange))
             }
 
             return Result(image: renderIcon(suffix: nil, color: nil))

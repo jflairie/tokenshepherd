@@ -151,7 +151,8 @@ struct BindingView: View {
                 }
                 Spacer()
                 if !bindingWindow.isLocked {
-                    Text(quota.fetchedAt, style: .time)
+                    Text(quota.fetchedAt, style: .relative)
+                        .monospacedDigit()
                         .foregroundStyle(.quaternary)
                 }
             }

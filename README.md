@@ -11,8 +11,8 @@ If the sheep is calm, you never need to click.
 ```
  🐑          All good. Keep working.
 
- 🐑→92%      Your pace projects to 92% by reset.
-              (orange — heads up)
+ 🐑↗         Your pace is heading for the limit.
+              (orange — look closer)
 
  🐑 78%      Utilization is getting warm.
               (orange)
@@ -24,7 +24,7 @@ If the sheep is calm, you never need to click.
               (red)
 ```
 
-That's it. Glance at the menu bar, know where you stand.
+Three distinct formats: nothing, arrow, number. Glance at the menu bar, know where you stand.
 
 <br>
 
@@ -59,8 +59,7 @@ make run
 │  7-day  12%  ██░░░░░░  resets Wed   │
 │                                     │
 ├─────────────────────────────────────┤
-│  Copy status ⌘C        Dashboard ↗  │
-│  Refresh ⌘R               Quit ⌘Q  │
+│  ↻  Copy status  Dashboard ↗  30s  │
 └─────────────────────────────────────┘
 ```
 
@@ -83,8 +82,7 @@ No alarm. Context only — which window, which model, when it resets. The sparkl
 │  7-day  12%  ██░░░░░░  resets Wed   │
 │                                     │
 ├─────────────────────────────────────┤
-│  Copy status ⌘C        Dashboard ↗  │
-│  Refresh ⌘R               Quit ⌘Q  │
+│  ↻  Copy status  Dashboard ↗  30s  │
 └─────────────────────────────────────┘
 ```
 
@@ -106,8 +104,7 @@ The app watches your velocity and projects where you'll be at reset. If the traj
 │  7-day  67%  ██████████░░░  Wed     │
 │                                     │
 ├─────────────────────────────────────┤
-│  Copy status ⌘C        Dashboard ↗  │
-│  Refresh ⌘R               Quit ⌘Q  │
+│  ↻  Copy status  Dashboard ↗  30s  │
 └─────────────────────────────────────┘
 ```
 
@@ -120,7 +117,7 @@ The app doesn't just show numbers. It watches your pace and speaks when there's 
 | State | Icon | What it means |
 |:------|:-----|:--------------|
 | **Calm** | 🐑 | You're fine. Keep working. |
-| **Trajectory** | 🐑→92% | Your pace projects to 92% by reset |
+| **Trajectory** | 🐑↗ | Your pace is heading for the limit |
 | **Warm** | 🐑 78% | Utilization above 70% |
 | **Low** | 🐑 94% | Utilization above 90% |
 | **Locked** | 🐑 2h 15m | Limit hit. Countdown to reset. |
@@ -150,52 +147,6 @@ Keychain → OAuth token
 ```
 
 Refreshes every 60 seconds and on every menu open.
-
-<br>
-
-## Architecture
-
-Native Swift/AppKit with SwiftUI views. No Electron, no web views, no runtime dependencies.
-
-```
-macos/Sources/TokenShepherd/
-  main.swift              — App wiring, menu construction, trajectory logic
-  Models.swift            — Data types (API, domain, history, trend)
-  KeychainService.swift   — OAuth token from macOS Keychain
-  APIService.swift        — URLSession to Anthropic quota API
-  QuotaService.swift      — Orchestrator: auth → fetch → state → timer
-  PaceCalculator.swift    — Pace projection, time-to-limit
-  TrendCalculator.swift   — Velocity from history, sparkline bucketing
-  NotificationService.swift — Threshold tracking, once-per-cycle alerts
-  HistoryStore.swift      — JSONL append/read/prune + window summaries
-  StatsCache.swift        — Reads Claude Code stats for model detection
-  BindingView.swift       — SwiftUI: guardian hero + secondary windows
-  SparklineView.swift     — SwiftUI: smooth bezier area chart
-  StatusBarIcon.swift     — Flipped sheep + colored suffix as NSImage
-```
-
-**Local storage** (`~/.tokenshepherd/`):
-- `history.jsonl` — utilization snapshots, pruned to 7 days
-- `windows.jsonl` — completed window cycle summaries
-
-<br>
-
-## Build
-
-```bash
-make run        # Build, sign, bundle, launch
-make build      # Build Swift binary only
-make dist       # Release build + zip for distribution
-make clean      # Clean build artifacts
-```
-
-**Keyboard shortcuts** (when menu is open):
-
-| Key | Action |
-|:----|:-------|
-| `⌘C` | Copy status to clipboard |
-| `⌘R` | Refresh |
-| `⌘Q` | Quit |
 
 <br>
 

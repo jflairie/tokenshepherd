@@ -9,7 +9,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var cancellables = Set<AnyCancellable>()
     private var cachedDominantModel: String?
     private var statsCacheTimer: Timer?
-    private var iconProjectedUtilization: Double?
+    private var iconShowTrajectory = false
 
     private var contentItem: NSMenuItem!
     private var footerItem: NSMenuItem!
@@ -35,18 +35,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         // Actions footer (unified custom view)
         footerItem = NSMenuItem()
-        let footerView = NSHostingView(rootView: ActionsFooterView(
-            onCopy: { [weak self] in
-                self?.copyStatus()
-                self?.statusItem.menu?.cancelTracking()
-            },
-            onDashboard: { [weak self] in
-                self?.openDashboard()
-                self?.statusItem.menu?.cancelTracking()
-            }
-        ))
-        footerView.frame.size = footerView.fittingSize
-        footerItem.view = footerView
+        updateFooter(fetchedAt: nil)
         menu.addItem(footerItem)
 
         // Hidden items for keyboard shortcuts
@@ -154,6 +143,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         switch state {
         case .loading:
             setLoadingState()
+            updateFooter(fetchedAt: nil)
 
         case .error(let message):
             let errorView = NSHostingView(rootView:
@@ -176,6 +166,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             )
             errorView.frame.size = errorView.fittingSize
             contentItem.view = errorView
+            updateFooter(fetchedAt: nil)
 
         case .loaded(let quota):
             let fiveHourPace = PaceCalculator.pace(for: quota.fiveHour, windowDuration: PaceCalculator.fiveHourDuration)
@@ -206,26 +197,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             // Compute trajectory warning for icon
             let bindingPace = isFiveHour ? fiveHourPace : sevenDayPace
             let paceWarning = bindingPace?.showWarning ?? false
-            var projectedUtil: Double? = nil
+            var trajectoryWarning = false
             let timeToReset = bindingWindow.resetsAt.timeIntervalSinceNow
             if timeToReset > 0, bindingWindow.utilization > 0.01,
                let t = trend, abs(t.velocityPerHour) > 0.001 {
                 let hoursRemaining = timeToReset / 3600
                 let p = bindingWindow.utilization + (t.velocityPerHour * hoursRemaining)
-                projectedUtil = max(min(p, 1.0), bindingWindow.utilization)
+                trajectoryWarning = max(min(p, 1.0), bindingWindow.utilization) >= 0.9
             }
-            let trajectoryWarning = projectedUtil.map { $0 >= 0.9 } ?? false
-            if bindingWindow.utilization < 0.7 {
-                if paceWarning {
-                    iconProjectedUtilization = projectedUtil ?? 1.0
-                } else if trajectoryWarning {
-                    iconProjectedUtilization = projectedUtil
-                } else {
-                    iconProjectedUtilization = nil
-                }
-            } else {
-                iconProjectedUtilization = nil
-            }
+            iconShowTrajectory = bindingWindow.utilization < 0.7 && (paceWarning || trajectoryWarning)
 
             let heroView = NSHostingView(rootView: BindingView(
                 quota: quota,
@@ -238,12 +218,32 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             ))
             heroView.frame.size = heroView.fittingSize
             contentItem.view = heroView
+            updateFooter(fetchedAt: quota.fetchedAt)
         }
+    }
+
+    private func updateFooter(fetchedAt: Date?) {
+        let footerView = NSHostingView(rootView: ActionsFooterView(
+            onRefresh: { [weak self] in
+                self?.refresh()
+            },
+            onCopy: { [weak self] in
+                self?.copyStatus()
+                self?.statusItem.menu?.cancelTracking()
+            },
+            onDashboard: { [weak self] in
+                self?.openDashboard()
+                self?.statusItem.menu?.cancelTracking()
+            },
+            fetchedAt: fetchedAt
+        ))
+        footerView.frame.size = footerView.fittingSize
+        footerItem.view = footerView
     }
 
     private func updateIcon(_ state: QuotaState) {
         guard let button = statusItem.button else { return }
-        let icon = StatusBarIcon.icon(for: state, projectedUtilization: iconProjectedUtilization)
+        let icon = StatusBarIcon.icon(for: state, showTrajectory: iconShowTrajectory)
         button.image = icon.image
         button.title = ""
     }
@@ -252,23 +252,23 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 // MARK: - Actions Footer View
 
 struct ActionsFooterView: View {
+    let onRefresh: () -> Void
     let onCopy: () -> Void
     let onDashboard: () -> Void
+    let fetchedAt: Date?
 
     var body: some View {
-        VStack(spacing: 8) {
-            HStack {
-                FooterButton(title: "Copy status", shortcut: "\u{2318}C", action: onCopy)
-                Spacer()
-                FooterButton(title: "Dashboard", shortcut: nil, action: onDashboard)
+        HStack(spacing: 6) {
+            FooterIconButton(systemImage: "arrow.clockwise", action: onRefresh)
+            FooterButton(title: "Copy status", action: onCopy)
+            FooterButton(title: "Dashboard \u{2197}", action: onDashboard)
+            Spacer()
+            if let fetchedAt {
+                Text(fetchedAt, style: .relative)
+                    .font(.system(.caption2))
+                    .foregroundStyle(.quaternary)
+                    .monospacedDigit()
             }
-            HStack {
-                Text("Refresh  \u{2318}R")
-                Spacer()
-                Text("Quit  \u{2318}Q")
-            }
-            .font(.system(.caption2))
-            .foregroundStyle(.quaternary)
         }
         .frame(width: 232)
         .padding(.horizontal, 14)
@@ -276,30 +276,42 @@ struct ActionsFooterView: View {
     }
 }
 
-struct FooterButton: View {
-    let title: String
-    let shortcut: String?
+struct FooterIconButton: View {
+    let systemImage: String
     let action: () -> Void
     @State private var isHovered = false
 
     var body: some View {
-        HStack(spacing: 3) {
-            Text(title)
-            if let shortcut {
-                Text(shortcut)
-                    .foregroundStyle(isHovered ? .tertiary : .quaternary)
-            }
-        }
-        .font(.system(.caption))
-        .foregroundStyle(isHovered ? .primary : .tertiary)
-        .padding(.horizontal, 6)
-        .padding(.vertical, 3)
-        .background(
-            RoundedRectangle(cornerRadius: 4)
-                .fill(isHovered ? Color.primary.opacity(0.06) : .clear)
-        )
-        .onHover { isHovered = $0 }
-        .onTapGesture { action() }
+        Image(systemName: systemImage)
+            .font(.system(.caption))
+            .foregroundStyle(isHovered ? .primary : .tertiary)
+            .frame(width: 22, height: 22)
+            .background(
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(isHovered ? Color.primary.opacity(0.06) : .clear)
+            )
+            .onHover { isHovered = $0 }
+            .onTapGesture { action() }
+    }
+}
+
+struct FooterButton: View {
+    let title: String
+    let action: () -> Void
+    @State private var isHovered = false
+
+    var body: some View {
+        Text(title)
+            .font(.system(.caption))
+            .foregroundStyle(isHovered ? .primary : .tertiary)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(isHovered ? Color.primary.opacity(0.06) : .clear)
+            )
+            .onHover { isHovered = $0 }
+            .onTapGesture { action() }
     }
 }
 
