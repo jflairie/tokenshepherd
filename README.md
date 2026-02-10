@@ -29,6 +29,10 @@ Requires macOS 14+ and Xcode Command Line Tools. First launch: allow the unsigne
 - Doesn't modify your usage or interact with Claude on your behalf
 - Doesn't send your data anywhere
 
+## Support
+
+If TokenShepherd saves you from hitting your limit, [consider sponsoring](https://github.com/sponsors/jflairie).
+
 ## License
 
 MIT
