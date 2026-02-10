@@ -21,6 +21,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var latestQuota: QuotaData?
     private var latestFiveHourPace: PaceInfo?
     private var latestSevenDayPace: PaceInfo?
+    private var latestTrend: TrendInfo?
 
     func setupStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -165,7 +166,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             quota: quota,
             fiveHourPace: latestFiveHourPace,
             sevenDayPace: latestSevenDayPace,
-            tokenSummary: cachedTokenSummary
+            tokenSummary: cachedTokenSummary,
+            trend: latestTrend
         ))
         detailsView.frame.size = detailsView.fittingSize
         detailsContentItem.view = detailsView
@@ -239,7 +241,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 entries: windowEntries,
                 isFiveHour: isFiveHour,
                 windowStart: windowStart,
-                windowEnd: bindingWindow.resetsAt
+                windowEnd: Date()
             )
 
             // Projection-driven sheep tint — only when util < 0.7 (higher util uses suffix)
@@ -266,6 +268,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             latestQuota = quota
             latestFiveHourPace = fiveHourPace
             latestSevenDayPace = sevenDayPace
+            latestTrend = trend
 
             let heroView = NSHostingView(rootView: BindingView(
                 quota: quota,

@@ -35,14 +35,20 @@ struct BindingView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
             if bindingWindow.isLocked {
-                HStack(alignment: .firstTextBaseline) {
-                    Text("Limit reached")
-                        .font(.system(size: 22, weight: .semibold, design: .rounded))
-                        .foregroundStyle(.red)
-                    Spacer()
-                    Text("back at \(formatTime(bindingWindow.resetsAt))")
-                        .font(.system(.callout, weight: .medium))
-                        .foregroundStyle(.red)
+                VStack(spacing: 8) {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text("Limit reached")
+                            .font(.system(size: 22, weight: .semibold, design: .rounded))
+                            .foregroundStyle(.red)
+                        Spacer()
+                        Text("back at \(formatTime(bindingWindow.resetsAt))")
+                            .font(.system(.callout, weight: .medium))
+                            .foregroundStyle(.red)
+                    }
+                    Text("\u{1F411}")
+                        .font(.system(size: 16))
+                        .scaleEffect(y: -1)
+                        .opacity(0.12)
                 }
             } else {
                 projectionLine
@@ -51,7 +57,9 @@ struct BindingView: View {
                     SparklineView(
                         data: sparklineData,
                         color: bindingColor,
-                        currentLabel: "\(Int(bindingWindow.utilization * 100))%"
+                        currentLabel: "\(Int(bindingWindow.utilization * 100))%",
+                        windowDuration: max(quota.bindingWindowDuration - bindingWindow.resetsAt.timeIntervalSinceNow, 0),
+                        windowEnd: Date()
                     )
                 }
             }
@@ -175,6 +183,7 @@ struct DetailsContentView: View {
     let fiveHourPace: PaceInfo?
     let sevenDayPace: PaceInfo?
     let tokenSummary: TokenSummary?
+    let trend: TrendInfo?
 
     private var isFiveHourBinding: Bool {
         quota.fiveHour.utilization >= quota.sevenDay.utilization
@@ -213,6 +222,25 @@ struct DetailsContentView: View {
                     value: Text(String(format: "$%.0f / $%.0f", used, limit))
                         .foregroundStyle(.secondary)
                 )
+            }
+
+            if let proj = projectionExplanation {
+                Rectangle()
+                    .fill(.quaternary.opacity(0.5))
+                    .frame(height: 0.5)
+                    .padding(.vertical, 2)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Projection")
+                        .font(.system(.caption, weight: .medium))
+                        .foregroundStyle(.tertiary)
+                    Text(proj.observation)
+                        .font(.system(.caption2))
+                        .foregroundStyle(.secondary)
+                    Text(proj.conclusion)
+                        .font(.system(.caption2))
+                        .foregroundStyle(.secondary)
+                }
             }
 
             if let summary = tokenSummary, summary.last7Days > 0 {
@@ -294,5 +322,50 @@ struct DetailsContentView: View {
             return String(format: "%.0fK tokens", Double(count) / 1_000)
         }
         return "\(count) tokens"
+    }
+
+    // MARK: - Projection explanation
+
+    private var projectionExplanation: (observation: String, conclusion: String)? {
+        let timeToReset = bindingWindow.resetsAt.timeIntervalSinceNow
+        guard timeToReset > 0, bindingWindow.utilization > 0.01, !bindingWindow.isLocked else { return nil }
+
+        let utilPct = Int(bindingWindow.utilization * 100)
+        let duration = quota.bindingWindowDuration
+        let elapsed = duration - timeToReset
+        guard elapsed > 60 else { return nil }
+
+        let projected: Double
+        if let t = trend, abs(t.velocityPerHour) > 0.001 {
+            let hoursRemaining = timeToReset / 3600
+            projected = max(min(bindingWindow.utilization + (t.velocityPerHour * hoursRemaining), 1.0), bindingWindow.utilization)
+        } else {
+            let rate = bindingWindow.utilization / elapsed
+            projected = min(rate * duration, 1.0)
+        }
+
+        let projPct = Int(projected * 100)
+        guard projPct > utilPct else { return nil }
+
+        let elapsedStr = formatElapsed(elapsed)
+        return (
+            observation: "\(utilPct)% used in \(elapsedStr)",
+            conclusion: "At this pace \u{2192} ~\(projPct)% at reset"
+        )
+    }
+
+    private func formatElapsed(_ interval: TimeInterval) -> String {
+        let totalMin = Int(interval) / 60
+        let hours = totalMin / 60
+        let mins = totalMin % 60
+        if hours >= 24 {
+            let days = hours / 24
+            let remH = hours % 24
+            return remH > 0 ? "\(days)d \(remH)h" : "\(days)d"
+        }
+        if hours > 0 {
+            return mins > 0 ? "\(hours)h \(mins)m" : "\(hours)h"
+        }
+        return "\(mins)m"
     }
 }
