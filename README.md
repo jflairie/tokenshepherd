@@ -1,26 +1,16 @@
 # TokenShepherd
 
-**A guardian, not a dashboard.** Mac menu bar app that watches your Claude Code quota so you don't have to.
+A Mac menu bar app that watches your Claude Code rate limits so you don't have to.
 
-If the sheep is calm, you never need to click.
+Green sheep = you're fine. Orange = watch your pace. Red = running low. If the sheep is calm, keep working.
 
-<br>
+## How It Works
 
-## The Icon Tells the Story
+TokenShepherd reads the OAuth token that Claude Code stores in your macOS Keychain, checks the Anthropic quota API every 60 seconds, and tells you when something needs attention.
 
-```
- 🐑          All good. Keep working.
+It tracks your usage velocity, projects where you'll be at reset, and notifies you before you hit the limit — not after.
 
- 🐑 78%      Getting warm.  (orange)
-
- 🐑 94%      Running low.   (red)
-
- 🐑 2h 15m   Locked.        (red)
-```
-
-Nothing, number, countdown. Glance at the menu bar, know where you stand.
-
-<br>
+**One API call** to Anthropic's usage endpoint. No telemetry, no analytics, no third-party services. All data stays on your machine.
 
 ## Install
 
@@ -30,117 +20,14 @@ cd tokenshepherd
 make run
 ```
 
-> macOS 14+ required. Swift 5.9+ comes with Xcode Command Line Tools.
->
-> First launch: macOS will ask you to allow the unsigned app.
-> System Settings → Privacy & Security → Allow.
+Requires macOS 14+ and Xcode Command Line Tools. First launch: allow the unsigned app in System Settings > Privacy & Security.
 
-<br>
+## What It's Not
 
-## What You'll See
-
-### When Everything Is Fine
-
-```
-┌─────────────────────────────────────┐
-│                                     │
-│  Opus · resets in 2h 30m            │
-│                                     │
-│  44%  ████████████░░░░░░░░░░░░░░░░  │
-│  ▁▁▂▃▃▃▄▅▅▅▅▅▆▆▆▆                  │
-│                                     │
-├─────────────────────────────────────┤
-│  ↻  Copy status  Dashboard ↗  30s  │
-└─────────────────────────────────────┘
-```
-
-No alarm. Just your model, when it resets, and a sparkline of this cycle. Secondary windows only appear when they need attention.
-
-### When the Guardian Speaks
-
-```
-┌─────────────────────────────────────┐
-│                                     │
-│  Heads up                           │
-│  on pace for ~92% — tight           │
-│                                     │
-│  44%  ████████████░░░░░░░░░░░░░░░░  │
-│  ▁▁▂▃▃▃▄▅▅▅▅▅▆▆▆▆▇▇▇              │
-│                                     │
-│  Opus · resets in 2h 30m            │
-│                                     │
-├─────────────────────────────────────┤
-│  ↻  Copy status  Dashboard ↗  30s  │
-└─────────────────────────────────────┘
-```
-
-The app watches your velocity and projects where you'll be at reset. If the trajectory looks bad, it tells you — even when utilization is low.
-
-### When You're Locked
-
-```
-┌─────────────────────────────────────┐
-│                                     │
-│  Limit reached        back at 5:30  │
-│                                     │
-│  ████████████████████████████████░  │
-│                                     │
-│  ─────────────────────────────────  │
-│  resets Wed 3:45 PM     67%         │
-│                                     │
-├─────────────────────────────────────┤
-│  ↻  Copy status  Dashboard ↗  30s  │
-└─────────────────────────────────────┘
-```
-
-<br>
-
-## Guardian Intelligence
-
-The app doesn't just show numbers. It watches your pace and speaks when there's something to say.
-
-| State | Icon | What it means |
-|:------|:-----|:--------------|
-| **Calm** | 🐑 | You're fine. Keep working. |
-| **Warm** | 🐑 78% | Utilization above 70% |
-| **Low** | 🐑 94% | Utilization above 90% |
-| **Locked** | 🐑 2h 15m | Limit hit. Countdown to reset. |
-
-**Silence is a feature.** Most of the time the icon is a calm sheep. No number, no color, no noise. That's the point — you only look when there's something to see.
-
-**Notifications** fire once per window cycle:
-- Pace warning — on track to hit the limit
-- 90% threshold — running low
-- Locked — limit reached
-- Restored — you're back
-
-<br>
-
-## How It Works
-
-TokenShepherd reads the OAuth token that Claude Code stores in your macOS Keychain, calls the Anthropic quota API, and monitors your rate limit windows.
-
-It identifies which window is the **binding constraint** (the one closest to limiting you), tracks your velocity, and projects where you'll be at reset.
-
-```
-Keychain → OAuth token
-  → Anthropic API (/api/oauth/usage)
-  → Binding constraint detection
-  → Pace projection (velocity, not naive linear)
-  → Icon + menu + notifications
-```
-
-Refreshes every 60 seconds and on every menu open.
-
-<br>
-
-## Privacy
-
-One GET request to `https://api.anthropic.com/api/oauth/usage`. That's it.
-
-No telemetry. No analytics. No third-party services. All history stays on your machine.
-
-<br>
+- Not affiliated with Anthropic
+- Not a dashboard — it's a guardian. Silence means everything is fine.
+- Doesn't modify your usage or interact with Claude on your behalf
+- Doesn't send your data anywhere
 
 ## License
 
