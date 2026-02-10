@@ -9,7 +9,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var cancellables = Set<AnyCancellable>()
     private var cachedTokenSummary: TokenSummary?
     private var statsCacheTimer: Timer?
-    private var iconSheepTint: NSColor?
+    private var latestState: ShepherdState = .calm
 
     private var contentItem: NSMenuItem!
     private var detailsToggleItem: NSMenuItem!
@@ -31,7 +31,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return
         }
 
-        button.image = StatusBarIcon.icon(for: .loading).image
+        button.image = StatusBarIcon.icon(for: .calm)
 
         let menu = NSMenu()
         menu.delegate = self
@@ -86,7 +86,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] state in
                 self?.updateUI(state)
-                self?.updateIcon(state)
                 self?.notificationService.evaluate(state: state)
             }
             .store(in: &cancellables)
@@ -184,7 +183,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     .font(.system(.caption))
                     .foregroundStyle(.secondary)
             }
-            .frame(width: 260)
+            .frame(width: 280)
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
         )
@@ -215,7 +214,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
-                .frame(width: 260, alignment: .leading)
+                .frame(width: 280, alignment: .leading)
             )
             errorView.frame.size = errorView.fittingSize
             contentItem.view = errorView
@@ -225,7 +224,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let fiveHourPace = PaceCalculator.pace(for: quota.fiveHour, windowDuration: PaceCalculator.fiveHourDuration)
             let sevenDayPace = PaceCalculator.pace(for: quota.sevenDay, windowDuration: PaceCalculator.sevenDayDuration)
 
-            // Determine binding window and read history
             let isFiveHour = quota.fiveHour.utilization >= quota.sevenDay.utilization
             let bindingWindow = isFiveHour ? quota.fiveHour : quota.sevenDay
             let windowEntries = HistoryStore.readForWindow(
@@ -244,25 +242,32 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 windowEnd: Date()
             )
 
-            // Projection-driven sheep tint — only when util < 0.7 (higher util uses suffix)
+            // Compute projected utilization at reset for state derivation
+            // Rate-based = baseline (whole window average). Trend = recent velocity.
+            // Use whichever is higher — more conservative warning.
             let bindingPace = isFiveHour ? fiveHourPace : sevenDayPace
-            let paceWarning = bindingPace?.showWarning ?? false
-            var projectedUtil: Double? = nil
+            var projectedAtReset: Double? = nil
             let timeToReset = bindingWindow.resetsAt.timeIntervalSinceNow
-            if timeToReset > 0, bindingWindow.utilization > 0.01,
-               let t = trend, abs(t.velocityPerHour) > 0.001 {
-                let hoursRemaining = timeToReset / 3600
-                projectedUtil = max(min(bindingWindow.utilization + (t.velocityPerHour * hoursRemaining), 1.0), bindingWindow.utilization)
-            }
-            if bindingWindow.utilization < 0.7 {
-                if paceWarning || (projectedUtil ?? 0) >= 0.7 {
-                    iconSheepTint = .systemOrange
-                } else {
-                    iconSheepTint = nil
+            if timeToReset > 0, bindingWindow.utilization > 0.01 {
+                let elapsed = windowDuration - timeToReset
+                if elapsed > 60 {
+                    let rate = bindingWindow.utilization / elapsed
+                    projectedAtReset = min(rate * windowDuration, 1.0)
                 }
-            } else {
-                iconSheepTint = nil  // suffix handles >= 0.7
+                if let t = trend, abs(t.velocityPerHour) > 0.001 {
+                    let hoursRemaining = timeToReset / 3600
+                    let trendProjected = max(min(bindingWindow.utilization + (t.velocityPerHour * hoursRemaining), 1.0), bindingWindow.utilization)
+                    projectedAtReset = max(projectedAtReset ?? 0, trendProjected)
+                }
             }
+
+            // Single state derivation — every surface uses this
+            latestState = ShepherdState.from(
+                window: bindingWindow,
+                pace: bindingPace,
+                projectedAtReset: projectedAtReset,
+                trend: trend
+            )
 
             // Cache for details
             latestQuota = quota
@@ -272,8 +277,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
             let heroView = NSHostingView(rootView: BindingView(
                 quota: quota,
-                fiveHourPace: fiveHourPace,
-                sevenDayPace: sevenDayPace,
+                state: latestState,
+                bindingPace: bindingPace,
+                projectedAtReset: projectedAtReset,
                 trend: trend,
                 sparklineData: sparklineData,
                 tokenSummary: cachedTokenSummary
@@ -281,11 +287,19 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             heroView.frame.size = heroView.fittingSize
             contentItem.view = heroView
 
-            // Refresh details content if visible
-            if detailsVisible {
-                updateDetailsContent()
+            // Hide details when window expired — stale data contradicts "All clear"
+            let windowExpired = bindingWindow.resetsAt.timeIntervalSinceNow <= 0
+            if windowExpired {
+                detailsToggleItem.isHidden = true
+                detailsContentItem.isHidden = true
+            } else {
+                detailsToggleItem.isHidden = false
+                if detailsVisible {
+                    updateDetailsContent()
+                }
             }
 
+            updateIcon()
             updateFooter(fetchedAt: quota.fetchedAt)
         }
     }
@@ -309,10 +323,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         footerItem.view = footerView
     }
 
-    private func updateIcon(_ state: QuotaState) {
+    private func updateIcon() {
         guard let button = statusItem.button else { return }
-        let icon = StatusBarIcon.icon(for: state, sheepTint: iconSheepTint)
-        button.image = icon.image
+        button.image = StatusBarIcon.icon(for: latestState)
         button.title = ""
     }
 }
@@ -338,7 +351,7 @@ struct ActionsFooterView: View {
                     .monospacedDigit()
             }
         }
-        .frame(width: 232)
+        .frame(width: 252)
         .padding(.horizontal, 14)
         .padding(.vertical, 6)
     }

@@ -2,118 +2,158 @@ import SwiftUI
 
 struct BindingView: View {
     let quota: QuotaData
-    let fiveHourPace: PaceInfo?
-    let sevenDayPace: PaceInfo?
+    let state: ShepherdState
+    let bindingPace: PaceInfo?
+    let projectedAtReset: Double?
     let trend: TrendInfo?
     let sparklineData: [Double]
     let tokenSummary: TokenSummary?
 
     private var bindingWindow: QuotaWindow { quota.bindingWindow }
-    private var bindingPace: PaceInfo? {
-        isFiveHourBinding ? fiveHourPace : sevenDayPace
-    }
     private var isFiveHourBinding: Bool {
         quota.fiveHour.utilization >= quota.sevenDay.utilization
     }
 
-    private var warning: (text: String, color: Color)? {
-        if let pace = bindingPace, pace.showWarning {
-            return ("Heads up", .orange)
-        }
-        if bindingWindow.utilization >= 0.9 {
-            return ("Running low", .red)
-        }
-        if bindingWindow.utilization >= 0.7 {
-            return ("Getting warm", .orange)
-        }
-        if let projected = projectedAtReset(window: bindingWindow), projected >= 0.9 {
-            return ("Heads up", .orange)
-        }
-        return nil
+    private var windowExpired: Bool {
+        bindingWindow.resetsAt.timeIntervalSinceNow <= 0
+    }
+
+    private var showsProjection: Bool {
+        guard !windowExpired, let projected = projectedAtReset else { return false }
+        return projected >= 0.7
+            && Int(projected * 100) > Int(bindingWindow.utilization * 100) + 5
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
-            if bindingWindow.isLocked {
-                VStack(spacing: 8) {
-                    HStack(alignment: .firstTextBaseline) {
-                        Text("Limit reached")
-                            .font(.system(size: 22, weight: .semibold, design: .rounded))
-                            .foregroundStyle(.red)
-                        Spacer()
-                        Text("back at \(formatTime(bindingWindow.resetsAt))")
-                            .font(.system(.callout, weight: .medium))
-                            .foregroundStyle(.red)
-                    }
-                    Text("\u{1F411}")
-                        .font(.system(size: 16))
-                        .scaleEffect(y: -1)
-                        .opacity(0.12)
-                }
-            } else {
-                projectionLine
+            heroSection
 
-                if sparklineHasVariation {
-                    SparklineView(
-                        data: sparklineData,
-                        color: bindingColor,
-                        currentLabel: "\(Int(bindingWindow.utilization * 100))%",
-                        windowDuration: max(quota.bindingWindowDuration - bindingWindow.resetsAt.timeIntervalSinceNow, 0),
-                        windowEnd: Date()
-                    )
-                }
+            if !windowExpired && !bindingWindow.isLocked && sparklineHasVariation {
+                SparklineView(
+                    data: sparklineData,
+                    color: state.chartColor,
+                    windowDuration: max(quota.bindingWindowDuration - bindingWindow.resetsAt.timeIntervalSinceNow, 0),
+                    windowEnd: Date()
+                )
             }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 14)
-        .frame(width: 260, alignment: .leading)
+        .frame(width: 280, alignment: .leading)
     }
 
-    // MARK: - Projection
+    // MARK: - Hero
 
     @ViewBuilder
-    private var projectionLine: some View {
-        if let pace = bindingPace, pace.showWarning {
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(alignment: .firstTextBaseline, spacing: 4) {
-                    Text("~\(Int(bindingWindow.utilization * 100))%")
-                        .font(.system(size: 20, weight: .heavy, design: .rounded))
-                        .foregroundStyle(.red)
-                    Text("→ limit ~\(pace.limitAtFormatted)")
-                        .font(.system(.callout, weight: .medium))
-                        .foregroundStyle(.red)
-                }
-                modelLabel
-            }
-        } else if let projected = projectedAtReset(window: bindingWindow) {
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(alignment: .firstTextBaseline, spacing: 4) {
-                    Text("~\(Int(projected * 100))%")
-                        .font(.system(size: 20, weight: .heavy, design: .rounded))
-                        .foregroundStyle(projected >= 0.7 ? .orange : .primary)
-                    Text("by \(formatTime(bindingWindow.resetsAt))")
-                        .font(.system(.callout, weight: .medium))
-                        .foregroundStyle(.secondary)
-                }
-                modelLabel
-            }
-        } else {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("resets \(formatTime(bindingWindow.resetsAt))")
-                    .font(.system(.body, weight: .medium))
+    private var heroSection: some View {
+        if windowExpired {
+            // Window ended — no stale numbers, just the answer: you're fine
+            VStack(alignment: .leading, spacing: 4) {
+                Text("All clear")
+                    .font(.system(size: 20, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.primary)
+                Text("Quota just reset")
+                    .font(.system(.caption, weight: .medium))
                     .foregroundStyle(.secondary)
                 modelLabel
             }
+        } else if bindingWindow.isLocked {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("LIMIT REACHED")
+                    .font(.system(.caption, weight: .semibold))
+                    .tracking(0.5)
+                    .foregroundStyle(state.color)
+
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Image(systemName: "clock")
+                        .font(.system(size: 14, weight: .medium))
+                    Text("back at \(formatTime(bindingWindow.resetsAt))")
+                        .font(.system(size: 18, weight: .semibold, design: .rounded))
+                }
+                .foregroundStyle(state.color)
+            }
+        } else if showsProjection, let projected = projectedAtReset {
+            // Projection drives the hero — show where you're heading
+            VStack(alignment: .leading, spacing: 4) {
+                Text("AT THIS PACE")
+                    .font(.system(.caption, weight: .semibold))
+                    .tracking(0.5)
+                    .foregroundStyle(.secondary)
+
+                Text("~\(Int(projected * 100))%")
+                    .font(.system(size: 32, weight: .bold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(state.color)
+
+                insightLine
+
+                contextLine
+            }
+        } else {
+            // Current utilization — no meaningful projection
+            VStack(alignment: .leading, spacing: 4) {
+                Text("\(Int(bindingWindow.utilization * 100))%")
+                    .font(.system(size: 32, weight: .bold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(state.color)
+
+                contextLine
+            }
+        }
+    }
+
+    /// Grounds the user: current state + limit warning when applicable
+    @ViewBuilder
+    private var insightLine: some View {
+        let currentPct = Int(bindingWindow.utilization * 100)
+        if let pace = bindingPace, pace.showWarning {
+            Text("\(currentPct)% now \u{00B7} limit ~\(pace.limitAtFormatted)")
+                .font(.system(.caption, weight: .medium))
+                .foregroundStyle(.secondary)
+        } else {
+            Text("\(currentPct)% now")
+                .font(.system(.caption, weight: .medium))
+                .foregroundStyle(.secondary)
         }
     }
 
     @ViewBuilder
     private var modelLabel: some View {
         if let model = tokenSummary?.dominantModel {
-            Text(model)
-                .font(.system(.caption2))
-                .foregroundStyle(.tertiary)
+            HStack(spacing: 3) {
+                Image(systemName: "cpu")
+                    .font(.system(.caption2))
+                Text(model)
+                    .font(.system(.caption2))
+            }
+            .foregroundStyle(.secondary)
         }
+    }
+
+    @ViewBuilder
+    private var contextLine: some View {
+        HStack(spacing: 4) {
+            if let model = tokenSummary?.dominantModel {
+                HStack(spacing: 3) {
+                    Image(systemName: "cpu")
+                        .font(.system(.caption2))
+                    Text(model)
+                        .font(.system(.caption2))
+                }
+
+                Text("\u{00B7}")
+                    .font(.system(.caption2))
+                    .foregroundStyle(.quaternary)
+            }
+
+            HStack(spacing: 3) {
+                Image(systemName: "clock")
+                    .font(.system(.caption2))
+                Text(formatTime(bindingWindow.resetsAt))
+                    .font(.system(.caption2))
+            }
+        }
+        .foregroundStyle(.secondary)
     }
 
     // MARK: - Helpers
@@ -123,31 +163,6 @@ struct BindingView: View {
               let min = sparklineData.min(),
               let max = sparklineData.max() else { return false }
         return (max - min) >= 0.02
-    }
-
-    private var bindingColor: Color {
-        if let w = warning { return w.color }
-        if let projected = projectedAtReset(window: bindingWindow) {
-            if projected >= 0.7 { return .orange }
-        }
-        return .green
-    }
-
-    private func projectedAtReset(window: QuotaWindow) -> Double? {
-        let timeToReset = window.resetsAt.timeIntervalSinceNow
-        guard timeToReset > 0, window.utilization > 0.01 else { return nil }
-
-        if let trend, abs(trend.velocityPerHour) > 0.001 {
-            let hoursRemaining = timeToReset / 3600
-            let projected = window.utilization + (trend.velocityPerHour * hoursRemaining)
-            return max(min(projected, 1.0), window.utilization)
-        }
-
-        let duration = quota.bindingWindowDuration
-        let elapsed = duration - timeToReset
-        guard elapsed > 60 else { return nil }
-        let rate = window.utilization / elapsed
-        return min(rate * duration, 1.0)
     }
 }
 
@@ -170,7 +185,7 @@ struct DetailsToggleView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 6)
-        .frame(width: 260, alignment: .leading)
+        .frame(width: 280, alignment: .leading)
         .contentShape(Rectangle())
         .onTapGesture { onToggle() }
     }
@@ -210,7 +225,7 @@ struct DetailsContentView: View {
                 detailRow(
                     label: "Sonnet 7d",
                     value: Text("\(Int(sonnet.utilization * 100))%")
-                        .foregroundStyle(sonnet.utilization >= 0.9 ? .red : sonnet.utilization >= 0.7 ? .orange : .secondary)
+                        .foregroundStyle(utilColor(sonnet.utilization))
                 )
             }
 
@@ -224,23 +239,17 @@ struct DetailsContentView: View {
                 )
             }
 
-            if let proj = projectionExplanation {
+            if let paceEvidence = paceEvidence {
                 Rectangle()
                     .fill(.quaternary.opacity(0.5))
                     .frame(height: 0.5)
                     .padding(.vertical, 2)
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Projection")
-                        .font(.system(.caption, weight: .medium))
-                        .foregroundStyle(.tertiary)
-                    Text(proj.observation)
-                        .font(.system(.caption2))
+                detailRow(
+                    label: "Pace",
+                    value: Text(paceEvidence)
                         .foregroundStyle(.secondary)
-                    Text(proj.conclusion)
-                        .font(.system(.caption2))
-                        .foregroundStyle(.secondary)
-                }
+                )
             }
 
             if let summary = tokenSummary, summary.last7Days > 0 {
@@ -272,7 +281,13 @@ struct DetailsContentView: View {
         }
         .padding(.horizontal, 28)
         .padding(.vertical, 6)
-        .frame(width: 260, alignment: .leading)
+        .frame(width: 280, alignment: .leading)
+    }
+
+    private func utilColor(_ util: Double) -> Color {
+        if util >= 0.9 { return .red }
+        if util >= 0.7 { return .orange }
+        return .secondary
     }
 
     private func detailRow<C: View>(label: String, value: C) -> some View {
@@ -300,18 +315,23 @@ struct DetailsContentView: View {
                 } else {
                     Text("\(Int(window.utilization * 100))%")
                         .font(.system(.caption))
-                        .foregroundStyle(window.utilization >= 0.9 ? .red : window.utilization >= 0.7 ? .orange : .secondary)
+                        .foregroundStyle(utilColor(window.utilization))
                 }
             }
-            if window.isLocked {
-                Text("back \(formatTime(window.resetsAt))")
+            HStack(spacing: 3) {
+                Image(systemName: "clock")
                     .font(.system(.caption2))
-                    .foregroundStyle(.red)
-            } else {
-                Text(formatTime(window.resetsAt))
-                    .font(.system(.caption2))
-                    .foregroundStyle(.quaternary)
+                if window.isLocked {
+                    Text("back \(formatTime(window.resetsAt))")
+                        .font(.system(.caption2))
+                        .foregroundStyle(.red)
+                } else {
+                    Text(formatTime(window.resetsAt))
+                        .font(.system(.caption2))
+                        .foregroundStyle(.quaternary)
+                }
             }
+            .foregroundStyle(window.isLocked ? Color.red : Color.secondary.opacity(0.3))
         }
     }
 
@@ -324,9 +344,9 @@ struct DetailsContentView: View {
         return "\(count) tokens"
     }
 
-    // MARK: - Projection explanation
+    // MARK: - Pace evidence (just the observation — hero has the conclusion)
 
-    private var projectionExplanation: (observation: String, conclusion: String)? {
+    private var paceEvidence: String? {
         let timeToReset = bindingWindow.resetsAt.timeIntervalSinceNow
         guard timeToReset > 0, bindingWindow.utilization > 0.01, !bindingWindow.isLocked else { return nil }
 
@@ -347,11 +367,7 @@ struct DetailsContentView: View {
         let projPct = Int(projected * 100)
         guard projPct > utilPct else { return nil }
 
-        let elapsedStr = formatElapsed(elapsed)
-        return (
-            observation: "\(utilPct)% used in \(elapsedStr)",
-            conclusion: "At this pace \u{2192} ~\(projPct)% at reset"
-        )
+        return "\(utilPct)% in \(formatElapsed(elapsed))"
     }
 
     private func formatElapsed(_ interval: TimeInterval) -> String {

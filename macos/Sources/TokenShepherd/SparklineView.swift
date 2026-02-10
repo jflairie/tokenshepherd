@@ -71,7 +71,7 @@ struct SparklineView: View {
                     smoothAreaPath(points: pts, bottomY: h)
                         .fill(
                             LinearGradient(
-                                colors: [color.opacity(0.18), color.opacity(0.02)],
+                                colors: [color.opacity(0.22), color.opacity(0.02)],
                                 startPoint: .top,
                                 endPoint: .bottom
                             )
@@ -79,7 +79,7 @@ struct SparklineView: View {
 
                     // 3) Line stroke
                     smoothStrokePath(points: pts)
-                        .stroke(color.opacity(0.45), lineWidth: 1.5)
+                        .stroke(color.opacity(0.55), lineWidth: 1.5)
 
                     // 4) Hover: vertical rule + dot. No hover: endpoint dot only.
                     if let idx = hoverIndex, idx >= 0, idx < pts.count {
@@ -104,7 +104,7 @@ struct SparklineView: View {
                     // Capture width for hover calculation
                     Color.clear.onAppear { chartWidth = w }
                 }
-                .frame(height: 32)
+                .frame(height: 40)
                 .contentShape(Rectangle())
                 .onContinuousHover { phase in
                     switch phase {
@@ -185,24 +185,20 @@ struct SparklineView: View {
         return remH > 0 ? "\(days)d \(remH)h ago" : "\(days)d ago"
     }
 
-    // MARK: - Threshold zones
+    // MARK: - Threshold lines
 
     @ViewBuilder
     private func thresholdZones(w: CGFloat, h: CGFloat) -> some View {
-        Path { p in p.addRect(CGRect(x: 0, y: 0, width: w, height: h * 0.1)) }
-            .fill(Color.red.opacity(0.04))
-        Path { p in p.addRect(CGRect(x: 0, y: h * 0.1, width: w, height: h * 0.2)) }
-            .fill(Color.orange.opacity(0.03))
         Path { p in
             p.move(to: CGPoint(x: 0, y: h * 0.1))
             p.addLine(to: CGPoint(x: w, y: h * 0.1))
         }
-        .stroke(Color.red.opacity(0.15), style: StrokeStyle(lineWidth: 0.5, dash: [3, 3]))
+        .stroke(Color.primary.opacity(0.06), style: StrokeStyle(lineWidth: 0.5, dash: [3, 3]))
         Path { p in
             p.move(to: CGPoint(x: 0, y: h * 0.3))
             p.addLine(to: CGPoint(x: w, y: h * 0.3))
         }
-        .stroke(Color.orange.opacity(0.12), style: StrokeStyle(lineWidth: 0.5, dash: [3, 3]))
+        .stroke(Color.primary.opacity(0.06), style: StrokeStyle(lineWidth: 0.5, dash: [3, 3]))
     }
 
     // MARK: - Delta bars
