@@ -31,7 +31,7 @@ make clean      # Clean Swift build artifacts
 
 1. **Icon (ambient)** — Calm sheep = fine. Orange `78%` = warm. Red `94%` = low. Red `2h 15m` = locked. 80% of the value lives here.
 2. **Notifications (proactive)** — Pace warning, 90% threshold, locked, restored. Each fires once per window cycle.
-3. **Menu (on demand)** — Guardian-first hero (verdict when warning, context when calm), unified activity chart with % label, collapsible details, metadata footer.
+3. **Menu (on demand)** — Guardian-first hero (verdict when warning, context when calm), interactive activity chart with hover detail, collapsible details with projection reasoning, metadata footer.
 
 ### File Structure
 ```
@@ -46,8 +46,8 @@ macos/Sources/TokenShepherd/
   NotificationService.swift — UNUserNotificationCenter: threshold tracking per window cycle
   HistoryStore.swift      — JSONL append/read/prune + window summaries (WindowSummaryStore)
   StatsCache.swift        — Reads ~/.claude/stats-cache.json for token summary (today/yesterday/7d counts + dominant model)
-  BindingView.swift       — SwiftUI: guardian-first hero + unified activity chart + collapsible details
-  SparklineView.swift     — SwiftUI: smooth bezier area chart (quadratic curves, gradient fill, optional % data label)
+  BindingView.swift       — SwiftUI: guardian-first hero (dead sheep when locked) + chart + collapsible details (includes projection explanation)
+  SparklineView.swift     — SwiftUI: interactive chart (bezier area, delta bars, threshold zones, hover info bar)
   StatusBarIcon.swift     — Renders flipped sheep + colored suffix as single NSImage
 ```
 
@@ -76,7 +76,7 @@ The app doesn't just show numbers. It watches your pace and speaks when there's 
 | Running low | `94%` red | "Running low" | Utilization 90-99% |
 | Locked | `2h 15m` red | "Limit reached" | Utilization 100% |
 
-Icon shows current state (ambient) — sheep tints orange when projected >= 70% but util still < 70%. Menu heading shows model + reset time when calm, verdict when warning. Unified activity chart replaces separate bar + sparkline, with current % as data label. Details section is collapsible — collapsed by default, expands to show both windows, token spend, and extra usage.
+Icon shows current state (ambient) — sheep tints orange when projected >= 70% but util still < 70%. Menu heading shows model + reset time when calm, verdict when warning. Locked state shows dead sheep (inverted, faded). Activity chart is interactive — hover shows utilization %, time-ago, and delta on burst bars. Details section is collapsible — collapsed by default, expands to show both windows, projection reasoning, token spend, and extra usage.
 
 ### Notification Thresholds
 | Trigger | Condition | Fires once per |
@@ -99,8 +99,9 @@ No data leaves your machine except the API call to Anthropic.
 - **Fuzzy date matching:** API `resetsAt` oscillates by ~1s between fetches. All date comparisons use 60s tolerance.
 - **Single NSImage icon:** Sheep emoji flipped via CGContext transform, rendered with colored suffix as one image. No gaps, no confusion with system icons.
 - **Guardian-first UI:** Heading shows verdict ("Heads up", "Running low") when there's a warning. Shows model + reset time when calm. No window type jargon ("5-hour"/"7-day") — users see reset times, not implementation details.
-- **Unified chart:** Single activity chart replaces separate progress bar + sparkline. Current % shown as data label at rightmost point. Removes visual redundancy.
-- **Collapsible details:** "Details" row collapsed by default. Expands to show both quota windows, Sonnet 7d, extra usage, and token spend (today/yesterday/7d from stats-cache). Trust layer for curious users.
+- **Interactive chart:** Fixed 0-100% y-axis (no auto-scaling — 40% looks like 40%). Delta bars show usage bursts. Threshold zones at 70%/90% with dashed lines. Hover reveals utilization %, time-ago, and delta. Info bar below chart — all text lives there, not floating on the chart. Only shows elapsed data (no forward-fill of future buckets).
+- **Collapsible details:** "Details" row collapsed by default. Expands to show both quota windows, projection explanation (inputs + reasoning in plain language), Sonnet 7d, extra usage, and token spend (today/yesterday/7d from stats-cache). Trust layer for curious users.
+- **Dead sheep:** Locked state shows inverted sheep at 12% opacity. Visual shorthand for "down".
 - **Silent insight:** Insight line only speaks when projected >= 70%. No "holding steady", "plenty of room" — silence IS the calm state.
 - **Projection-driven icon:** Sheep tints orange when projected >= 70% at reset (util still < 70%). Higher util uses colored suffix instead. Projection drives both icon AND menu assessment.
 
