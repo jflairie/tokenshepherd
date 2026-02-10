@@ -1,10 +1,13 @@
-.PHONY: build run clean
+.PHONY: build run clean install uninstall
 
 APP_NAME = TokenShepherd
 APP_BUNDLE = macos/.build/$(APP_NAME).app
 BINARY = macos/.build/arm64-apple-macosx/debug/$(APP_NAME)
 BINARY_RELEASE = macos/.build/arm64-apple-macosx/release/$(APP_NAME)
 ENTITLEMENTS = macos/Resources/TokenShepherd.entitlements
+INSTALL_PATH = /Applications/$(APP_NAME).app
+LAUNCHAGENT = com.tokenshepherd.app
+LAUNCHAGENT_PLIST = $(HOME)/Library/LaunchAgents/$(LAUNCHAGENT).plist
 
 # Build the Swift menu bar app
 build:
@@ -24,6 +27,26 @@ bundle:
 	cp "$(BINARY)" "$(APP_BUNDLE)/Contents/MacOS/$(APP_NAME)"
 	cp macos/Resources/Info.plist "$(APP_BUNDLE)/Contents/Info.plist"
 	codesign --force --deep --sign - --entitlements "$(ENTITLEMENTS)" --options runtime "$(APP_BUNDLE)"
+
+# Install to /Applications + auto-launch on login
+install: dist
+	@pkill -f $(APP_NAME) 2>/dev/null || true
+	@sleep 1
+	@cp -R "$(APP_BUNDLE)" "$(INSTALL_PATH)"
+	@mkdir -p "$(HOME)/Library/LaunchAgents"
+	@cp macos/Resources/$(LAUNCHAGENT).plist "$(LAUNCHAGENT_PLIST)"
+	@launchctl unload "$(LAUNCHAGENT_PLIST)" 2>/dev/null || true
+	@launchctl load "$(LAUNCHAGENT_PLIST)"
+	@open "$(INSTALL_PATH)"
+	@echo "Installed. Starts automatically on login."
+
+# Remove from /Applications + remove auto-launch
+uninstall:
+	@pkill -f $(APP_NAME) 2>/dev/null || true
+	@launchctl unload "$(LAUNCHAGENT_PLIST)" 2>/dev/null || true
+	@rm -f "$(LAUNCHAGENT_PLIST)"
+	@rm -rf "$(INSTALL_PATH)"
+	@echo "Uninstalled."
 
 # Create distributable .app bundle (release build)
 dist: release

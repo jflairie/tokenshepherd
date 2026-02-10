@@ -118,7 +118,7 @@ class QuotaService: ObservableObject {
     }
 
     private func mapWindow(_ api: APIQuotaWindow) -> QuotaWindow {
-        let date = Self.isoFormatter.date(from: api.resetsAt) ?? Date()
+        let date = api.resetsAt.flatMap { Self.isoFormatter.date(from: $0) } ?? Date()
         return QuotaWindow(
             utilization: api.utilization / 100.0,
             resetsAt: date

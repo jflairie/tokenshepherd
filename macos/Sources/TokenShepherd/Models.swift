@@ -4,7 +4,7 @@ import Foundation
 
 struct APIQuotaWindow: Codable {
     let utilization: Double  // 0-100
-    let resetsAt: String
+    let resetsAt: String?
 
     enum CodingKeys: String, CodingKey {
         case utilization

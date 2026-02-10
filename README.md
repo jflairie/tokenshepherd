@@ -15,8 +15,10 @@ Most of the time, you never need to click it.
 ```bash
 git clone https://github.com/jflairie/tokenshepherd
 cd tokenshepherd
-make run
+make install
 ```
+
+Builds, installs to `/Applications`, starts automatically on login. To remove: `make uninstall`.
 
 > macOS 14+. Xcode Command Line Tools. First launch: allow in System Settings > Privacy & Security.
 
