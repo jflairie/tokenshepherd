@@ -2,7 +2,7 @@
 
 ## What This Is
 
-A guardian, not a dashboard. Mac menu bar app that watches your Claude Code quota so you don't have to. Green sheep = fine. Orange = watch out. Red = locked. If the sheep is calm, you never need to click.
+A guardian, not a dashboard. Mac menu bar app that watches your Claude Code quota so you don't have to. Calm sheep = fine. Orange sheep = watch out. Red sheep = locked. If the sheep is calm, you never need to click.
 
 ## Philosophy
 
@@ -29,15 +29,16 @@ make clean      # Clean Swift build artifacts
 
 ### Three Surfaces
 
-1. **Icon (ambient)** — Calm sheep = fine. Orange `78%` = warm. Red `94%` = low. Red `2h 15m` = locked. 80% of the value lives here.
+1. **Icon (ambient)** — Sheep only, no text. Calm = plain (template). Orange = trajectory/warm. Red = low. Dead (flipped, 12% opacity) = locked. 80% of the value lives here.
 2. **Notifications (proactive)** — Pace warning, 90% threshold, locked, restored. Each fires once per window cycle.
-3. **Menu (on demand)** — Guardian-first hero (verdict when warning, context when calm), interactive activity chart with hover detail, collapsible details with projection reasoning, metadata footer.
+3. **Menu (on demand)** — Projection-driven hero (where you're heading, not where you are), interactive activity chart, collapsible details, metadata footer.
 
 ### File Structure
 ```
 macos/Sources/TokenShepherd/
-  main.swift              — AppDelegate, menu construction, footer, wiring
+  main.swift              — AppDelegate, menu construction, ShepherdState wiring, footer
   Models.swift            — All data types (API response, domain, auth, history, trend, window summary) + shared formatTime
+  DesignSystem.swift      — ShepherdState enum: single derivation point for state, color, chart color
   KeychainService.swift   — Read Claude Code OAuth token from macOS Keychain
   APIService.swift        — URLSession GET to Anthropic quota API + token refresh
   QuotaService.swift      — Orchestrator: auth → fetch → history → publish state + 60s timer
@@ -46,9 +47,9 @@ macos/Sources/TokenShepherd/
   NotificationService.swift — UNUserNotificationCenter: threshold tracking per window cycle
   HistoryStore.swift      — JSONL append/read/prune + window summaries (WindowSummaryStore)
   StatsCache.swift        — Reads ~/.claude/stats-cache.json for token summary (today/yesterday/7d counts + dominant model)
-  BindingView.swift       — SwiftUI: guardian-first hero (dead sheep when locked) + chart + collapsible details (includes projection explanation)
-  SparklineView.swift     — SwiftUI: interactive chart (bezier area, delta bars, threshold zones, hover info bar)
-  StatusBarIcon.swift     — Renders flipped sheep + colored suffix as single NSImage
+  BindingView.swift       — SwiftUI: projection-driven hero + chart + collapsible details with pace evidence
+  SparklineView.swift     — SwiftUI: interactive chart (bezier area, delta bars, neutral threshold lines, hover info bar)
+  StatusBarIcon.swift     — Sheep-only icon: calm/tinted/dead, no suffix text
 ```
 
 ### Data Flow
@@ -59,24 +60,30 @@ KeychainService → OAuthCredentials
   → Combine sink:
     → HistoryStore.append() → ~/.tokenshepherd/history.jsonl
     → HistoryStore.readForWindow() → TrendCalculator → velocity + sparkline
-    → BindingView (guardian hero, activity chart, collapsible details)
-    → StatusBarIcon (sheep + projection tint or utilization suffix)
+    → ShepherdState.from(window, pace, projection, trend) — single derivation
+    → BindingView (projection hero, activity chart, collapsible details)
+    → StatusBarIcon (sheep: calm/tinted/dead based on ShepherdState)
     → NotificationService.evaluate()
 ```
 
-### Guardian Intelligence
+### ShepherdState — One State, One Color
 
-The app doesn't just show numbers. It watches your pace and speaks when there's something to say:
+`ShepherdState` enum in `DesignSystem.swift` derives the state once. Every surface uses it.
 
-| State | Icon | Menu heading | Triggers when |
+| State | Condition | Icon | Hero |
 |---|---|---|---|
-| Calm | Sheep (no suffix) | "Opus · resets in 2h 30m" | Utilization < 70%, no trajectory concern |
-| Trajectory | Sheep orange-tinted (no suffix) | "Heads up" | Projected >= 70% at reset, util still < 70% |
-| Getting warm | `78%` orange | "Getting warm" | Utilization 70-89% |
-| Running low | `94%` red | "Running low" | Utilization 90-99% |
-| Locked | `2h 15m` red | "Limit reached" | Utilization 100% |
+| Calm | util < 70%, no trajectory | Plain sheep (template) | `42%` primary + context |
+| Trajectory | projected ≥ 70%, util < 70% | Orange-tinted sheep | `AT THIS PACE` `~85%` orange + `42% now` |
+| Warm | util 70-89% | Orange-tinted sheep | `AT THIS PACE` `~92%` orange + `78% now` (or just `78%` if stable) |
+| Low | util 90-99% | Red-tinted sheep | `AT THIS PACE` `~99%` red + `94% now` |
+| Locked | util ≥ 100% | Dead sheep (flipped, 12%) | `LIMIT REACHED` + `back at HH:MM` red |
+| Expired | resetsAt in past | Plain sheep (calm) | `All clear` + `Quota just reset` — no stale data |
 
-Icon shows current state (ambient) — sheep tints orange when projected >= 70% but util still < 70%. Menu heading shows model + reset time when calm, verdict when warning. Locked state shows dead sheep (inverted, faded). Activity chart is interactive — hover shows utilization %, time-ago, and delta on burst bars. Details section is collapsible — collapsed by default, expands to show both windows, projection reasoning, token spend, and extra usage.
+**Color hierarchy:** Only the big number gets state color. Everything else is `.secondary`. If everything is colored, nothing is colored.
+
+**Projection drives the hero:** The big number is where you're heading (projected at reset), not where you are. "AT THIS PACE" label frames it as a projection. Current utilization sits below as grounding ("78% now"). When there's no meaningful projection, falls back to current utilization.
+
+**Projection calculation:** Rate-based (whole window average) as baseline, trend-based (recent velocity) upgrades if higher. Takes the max — more conservative warning.
 
 ### Notification Thresholds
 | Trigger | Condition | Fires once per |
@@ -97,13 +104,14 @@ No data leaves your machine except the API call to Anthropic.
 ### Key Design Decisions
 
 - **Fuzzy date matching:** API `resetsAt` oscillates by ~1s between fetches. All date comparisons use 60s tolerance.
-- **Single NSImage icon:** Sheep emoji flipped via CGContext transform, rendered with colored suffix as one image. No gaps, no confusion with system icons.
-- **Guardian-first UI:** Heading shows verdict ("Heads up", "Running low") when there's a warning. Shows model + reset time when calm. No window type jargon ("5-hour"/"7-day") — users see reset times, not implementation details.
-- **Interactive chart:** Fixed 0-100% y-axis (no auto-scaling — 40% looks like 40%). Delta bars show usage bursts. Threshold zones at 70%/90% with dashed lines. Hover reveals utilization %, time-ago, and delta. Info bar below chart — all text lives there, not floating on the chart. Only shows elapsed data (no forward-fill of future buckets).
-- **Collapsible details:** "Details" row collapsed by default. Expands to show both quota windows, projection explanation (inputs + reasoning in plain language), Sonnet 7d, extra usage, and token spend (today/yesterday/7d from stats-cache). Trust layer for curious users.
-- **Dead sheep:** Locked state shows inverted sheep at 12% opacity. Visual shorthand for "down".
-- **Silent insight:** Insight line only speaks when projected >= 70%. No "holding steady", "plenty of room" — silence IS the calm state.
-- **Projection-driven icon:** Sheep tints orange when projected >= 70% at reset (util still < 70%). Higher util uses colored suffix instead. Projection drives both icon AND menu assessment.
+- **Sheep-only icon:** No text suffix in menu bar. Sheep emoji flipped via CGContext transform. Calm = `isTemplate: false` (plain emoji). Tinted = `.sourceAtop` blend with color. Dead = flipped vertically + 12% alpha.
+- **Projection-driven hero:** Big number answers "will I be able to keep working?" — shows projected utilization at reset, not current. "AT THIS PACE" label makes it clear this is a projection. Current value grounds below. Only the big number is colored.
+- **Insight line:** Only speaks when there's something actionable. Pace warning: "78% now · limit ~5:30 PM". No projection: no line. Silence IS the calm state.
+- **Interactive chart:** Fixed 0-100% y-axis. Delta bars show usage bursts. Neutral dashed threshold lines (`.primary.opacity(0.06)`) — barely visible, don't compete with data. Hover reveals utilization %, time-ago, and delta. Chart height 40px. Hidden when window expired.
+- **Collapsible details:** Collapsed by default. Both quota windows with clock icons, pace evidence as single row ("78% in 3h 55m"), Sonnet 7d, extra usage, token spend. Hidden when window expired — no stale data.
+- **Expired window handling:** When `resetsAt` is in the past, state becomes calm. Hero shows "All clear / Quota just reset" — no stale numbers, no chart, no details. Updates naturally when API sends fresh window.
+- **Dead sheep:** Locked state shows inverted sheep at 12% opacity in icon. Menu shows `LIMIT REACHED` + `back at HH:MM`.
+- **Width:** 280px for all menu content (hero, details toggle, details content). Footer at 252px (280 - 28 padding).
 
 ## Key Documents
 
