@@ -52,6 +52,10 @@ enum ShepherdState {
 
         let util = window.utilization
         if util >= 0.9 { return .low }
+
+        // Projection into red zone overrides current-util severity
+        if let projected = projectedAtReset, projected >= 0.9 { return .low }
+
         if util >= 0.7 { return .warm }
 
         // Below 70% — check trajectory

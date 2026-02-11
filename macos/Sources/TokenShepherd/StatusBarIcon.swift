@@ -55,7 +55,7 @@ struct StatusBarIcon {
         // Tint overlay
         ctx.saveGState()
         ctx.setBlendMode(.sourceAtop)
-        ctx.setFillColor(tint.withAlphaComponent(0.4).cgColor)
+        ctx.setFillColor(tint.withAlphaComponent(0.6).cgColor)
         ctx.fill(CGRect(origin: .zero, size: size))
         ctx.restoreGState()
 

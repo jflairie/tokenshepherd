@@ -22,6 +22,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var latestFiveHourPace: PaceInfo?
     private var latestSevenDayPace: PaceInfo?
     private var latestTrend: TrendInfo?
+    private var latestProjection: Double?
 
     func setupStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -166,7 +167,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             fiveHourPace: latestFiveHourPace,
             sevenDayPace: latestSevenDayPace,
             tokenSummary: cachedTokenSummary,
-            trend: latestTrend
+            trend: latestTrend,
+            bindingProjection: latestProjection
         ))
         detailsView.frame.size = detailsView.fittingSize
         detailsContentItem.view = detailsView
@@ -274,6 +276,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             latestFiveHourPace = fiveHourPace
             latestSevenDayPace = sevenDayPace
             latestTrend = trend
+            latestProjection = projectedAtReset
 
             let heroView = NSHostingView(rootView: BindingView(
                 quota: quota,
@@ -287,16 +290,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             heroView.frame.size = heroView.fittingSize
             contentItem.view = heroView
 
-            // Hide details when window expired — stale data contradicts "All clear"
-            let windowExpired = bindingWindow.resetsAt.timeIntervalSinceNow <= 0
-            if windowExpired {
-                detailsToggleItem.isHidden = true
-                detailsContentItem.isHidden = true
-            } else {
-                detailsToggleItem.isHidden = false
-                if detailsVisible {
-                    updateDetailsContent()
-                }
+            if detailsVisible {
+                updateDetailsContent()
             }
 
             updateIcon()

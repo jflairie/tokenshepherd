@@ -80,14 +80,34 @@ struct BindingView: View {
                     .tracking(0.5)
                     .foregroundStyle(.secondary)
 
-                Text("~\(Int(projected * 100))%")
-                    .font(.system(size: 32, weight: .bold, design: .rounded))
-                    .monospacedDigit()
-                    .foregroundStyle(state.color)
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text("~\(Int(projected * 100))%")
+                        .font(.system(size: 32, weight: .bold, design: .rounded))
+                        .monospacedDigit()
+                        .foregroundStyle(state.color)
+                    Text("at reset \(formatTime(bindingWindow.resetsAt))")
+                        .font(.system(.caption, weight: .medium))
+                        .foregroundStyle(.secondary)
+                }
 
-                insightLine
+                HStack(spacing: 4) {
+                    if let model = tokenSummary?.dominantModel {
+                        HStack(spacing: 3) {
+                            Image(systemName: "cpu")
+                                .font(.system(.caption2))
+                            Text(model)
+                                .font(.system(.caption2))
+                        }
 
-                contextLine
+                        Text("\u{00B7}")
+                            .font(.system(.caption2))
+                            .foregroundStyle(.quaternary)
+                    }
+
+                    Text("\(Int(bindingWindow.utilization * 100))% now")
+                        .font(.system(.caption2))
+                }
+                .foregroundStyle(.secondary)
             }
         } else {
             // Current utilization — no meaningful projection
@@ -199,6 +219,7 @@ struct DetailsContentView: View {
     let sevenDayPace: PaceInfo?
     let tokenSummary: TokenSummary?
     let trend: TrendInfo?
+    let bindingProjection: Double?
 
     private var isFiveHourBinding: Bool {
         quota.fiveHour.utilization >= quota.sevenDay.utilization
@@ -210,16 +231,8 @@ struct DetailsContentView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            VStack(alignment: .leading, spacing: 10) {
-                windowRow(
-                    label: isFiveHourBinding ? "Short window" : "Long window",
-                    window: bindingWindow
-                )
-                windowRow(
-                    label: isFiveHourBinding ? "Long window" : "Short window",
-                    window: nonBindingWindow
-                )
-            }
+            // Window table
+            windowTable
 
             if let sonnet = quota.sevenDaySonnet, sonnet.utilization > 0 {
                 detailRow(
@@ -235,19 +248,6 @@ struct DetailsContentView: View {
                 detailRow(
                     label: "Extra usage",
                     value: Text(String(format: "$%.0f / $%.0f", used, limit))
-                        .foregroundStyle(.secondary)
-                )
-            }
-
-            if let paceEvidence = paceEvidence {
-                Rectangle()
-                    .fill(.quaternary.opacity(0.5))
-                    .frame(height: 0.5)
-                    .padding(.vertical, 2)
-
-                detailRow(
-                    label: "Pace",
-                    value: Text(paceEvidence)
                         .foregroundStyle(.secondary)
                 )
             }
@@ -279,9 +279,121 @@ struct DetailsContentView: View {
                 )
             }
         }
-        .padding(.horizontal, 28)
+        .padding(.horizontal, 24)
         .padding(.vertical, 6)
         .frame(width: 280, alignment: .leading)
+    }
+
+    // MARK: - Window Table (windows as columns, data as rows)
+
+    private let colLabel: CGFloat = 48
+    private let colShort: CGFloat = 80
+    private let colLong: CGFloat = 104
+
+    @ViewBuilder
+    private var windowTable: some View {
+        let fh = quota.fiveHour
+        let sd = quota.sevenDay
+        let fhExpired = fh.resetsAt.timeIntervalSinceNow <= 0
+        let sdExpired = sd.resetsAt.timeIntervalSinceNow <= 0
+
+        // Header
+        HStack(spacing: 0) {
+            Text("")
+                .frame(width: colLabel, alignment: .leading)
+            Text("Short")
+                .frame(width: colShort, alignment: .trailing)
+            Text("Long")
+                .frame(width: colLong, alignment: .trailing)
+        }
+        .font(.system(.caption2, weight: .semibold))
+        .foregroundStyle(.tertiary)
+
+        Rectangle()
+            .fill(.quaternary.opacity(0.4))
+            .frame(height: 0.5)
+            .padding(.vertical, 1)
+
+        // Now
+        tableRow(label: "Now") {
+            cellText(fhExpired ? "reset" : fh.isLocked ? "100%" : "\(Int(fh.utilization * 100))%",
+                     color: fhExpired ? Color.secondary.opacity(0.3) : fh.isLocked ? .red : utilColor(fh.utilization),
+                     width: colShort)
+            cellText(sdExpired ? "reset" : sd.isLocked ? "100%" : "\(Int(sd.utilization * 100))%",
+                     color: sdExpired ? Color.secondary.opacity(0.3) : sd.isLocked ? .red : utilColor(sd.utilization),
+                     width: colLong)
+        }
+
+        // Pace — binding window uses hero projection (rate+trend), non-binding uses rate-only
+        tableRow(label: "Pace") {
+            if isFiveHourBinding {
+                bindingPaceCell(expired: fhExpired, width: colShort)
+                paceCell(window: sd, duration: 604_800, expired: sdExpired, width: colLong)
+            } else {
+                paceCell(window: fh, duration: 18_000, expired: fhExpired, width: colShort)
+                bindingPaceCell(expired: sdExpired, width: colLong)
+            }
+        }
+
+        // Resets
+        tableRow(label: "Resets") {
+            cellText(fhExpired ? "done" : formatTimeShort(fh.resetsAt),
+                     color: fh.isLocked ? .red : Color.secondary.opacity(0.3),
+                     width: colShort)
+            cellText(sdExpired ? "done" : formatTimeShort(sd.resetsAt),
+                     color: sd.isLocked ? .red : Color.secondary.opacity(0.3),
+                     width: colLong)
+        }
+    }
+
+    private func tableRow<C: View>(label: String, @ViewBuilder content: () -> C) -> some View {
+        HStack(spacing: 0) {
+            Text(label)
+                .font(.system(.caption2, weight: .medium))
+                .foregroundStyle(.tertiary)
+                .frame(width: colLabel, alignment: .leading)
+            content()
+        }
+    }
+
+    private func cellText(_ text: String, color: Color, width: CGFloat) -> some View {
+        Text(text)
+            .font(.system(.caption).monospacedDigit())
+            .foregroundStyle(color)
+            .frame(width: width, alignment: .trailing)
+    }
+
+    @ViewBuilder
+    private func bindingPaceCell(expired: Bool, width: CGFloat) -> some View {
+        if expired {
+            cellText("—", color: Color.secondary.opacity(0.3), width: width)
+        } else if let proj = bindingProjection {
+            cellText("~\(Int(proj * 100))%", color: utilColor(proj), width: width)
+        } else {
+            cellText("—", color: Color.secondary.opacity(0.3), width: width)
+        }
+    }
+
+    @ViewBuilder
+    private func paceCell(window: QuotaWindow, duration: TimeInterval, expired: Bool, width: CGFloat) -> some View {
+        if expired {
+            cellText("—", color: Color.secondary.opacity(0.3), width: width)
+        } else if let proj = projectedUtil(for: window, duration: duration) {
+            cellText("~\(Int(proj * 100))%", color: utilColor(proj), width: width)
+        } else {
+            cellText("—", color: Color.secondary.opacity(0.3), width: width)
+        }
+    }
+
+    private func projectedUtil(for window: QuotaWindow, duration: TimeInterval) -> Double? {
+        let timeToReset = window.resetsAt.timeIntervalSinceNow
+        guard timeToReset > 0, window.utilization > 0.01, !window.isLocked else { return nil }
+        let elapsed = duration - timeToReset
+        guard elapsed > 60 else { return nil }
+        let rate = window.utilization / elapsed
+        let projected = min(rate * duration, 1.0)
+        guard Int(projected * 100) > Int(window.utilization * 100) + 5 else { return nil }
+        return projected
     }
 
     private func utilColor(_ util: Double) -> Color {
@@ -301,38 +413,16 @@ struct DetailsContentView: View {
         }
     }
 
-    private func windowRow(label: String, window: QuotaWindow) -> some View {
-        VStack(alignment: .leading, spacing: 1) {
-            HStack {
-                Text(label)
-                    .font(.system(.caption, weight: .medium))
-                    .foregroundStyle(.tertiary)
-                Spacer()
-                if window.isLocked {
-                    Text("Locked")
-                        .font(.system(.caption, weight: .medium))
-                        .foregroundStyle(.red)
-                } else {
-                    Text("\(Int(window.utilization * 100))%")
-                        .font(.system(.caption))
-                        .foregroundStyle(utilColor(window.utilization))
-                }
-            }
-            HStack(spacing: 3) {
-                Image(systemName: "clock")
-                    .font(.system(.caption2))
-                if window.isLocked {
-                    Text("back \(formatTime(window.resetsAt))")
-                        .font(.system(.caption2))
-                        .foregroundStyle(.red)
-                } else {
-                    Text(formatTime(window.resetsAt))
-                        .font(.system(.caption2))
-                        .foregroundStyle(.quaternary)
-                }
-            }
-            .foregroundStyle(window.isLocked ? Color.red : Color.secondary.opacity(0.3))
+    private func formatTimeShort(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale.current
+        let calendar = Calendar.current
+        if calendar.isDate(date, inSameDayAs: Date()) {
+            formatter.dateFormat = "h:mm a"
+        } else {
+            formatter.dateFormat = "EEE h:mm a"
         }
+        return formatter.string(from: date)
     }
 
     private func formatTokenCount(_ count: Int) -> String {
@@ -344,44 +434,4 @@ struct DetailsContentView: View {
         return "\(count) tokens"
     }
 
-    // MARK: - Pace evidence (just the observation — hero has the conclusion)
-
-    private var paceEvidence: String? {
-        let timeToReset = bindingWindow.resetsAt.timeIntervalSinceNow
-        guard timeToReset > 0, bindingWindow.utilization > 0.01, !bindingWindow.isLocked else { return nil }
-
-        let utilPct = Int(bindingWindow.utilization * 100)
-        let duration = quota.bindingWindowDuration
-        let elapsed = duration - timeToReset
-        guard elapsed > 60 else { return nil }
-
-        let projected: Double
-        if let t = trend, abs(t.velocityPerHour) > 0.001 {
-            let hoursRemaining = timeToReset / 3600
-            projected = max(min(bindingWindow.utilization + (t.velocityPerHour * hoursRemaining), 1.0), bindingWindow.utilization)
-        } else {
-            let rate = bindingWindow.utilization / elapsed
-            projected = min(rate * duration, 1.0)
-        }
-
-        let projPct = Int(projected * 100)
-        guard projPct > utilPct else { return nil }
-
-        return "\(utilPct)% in \(formatElapsed(elapsed))"
-    }
-
-    private func formatElapsed(_ interval: TimeInterval) -> String {
-        let totalMin = Int(interval) / 60
-        let hours = totalMin / 60
-        let mins = totalMin % 60
-        if hours >= 24 {
-            let days = hours / 24
-            let remH = hours % 24
-            return remH > 0 ? "\(days)d \(remH)h" : "\(days)d"
-        }
-        if hours > 0 {
-            return mins > 0 ? "\(hours)h \(mins)m" : "\(hours)h"
-        }
-        return "\(mins)m"
-    }
 }
