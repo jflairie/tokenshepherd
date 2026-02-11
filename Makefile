@@ -26,18 +26,18 @@ bundle:
 	mkdir -p "$(APP_BUNDLE)/Contents/MacOS"
 	cp "$(BINARY)" "$(APP_BUNDLE)/Contents/MacOS/$(APP_NAME)"
 	cp macos/Resources/Info.plist "$(APP_BUNDLE)/Contents/Info.plist"
-	codesign --force --deep --sign - --entitlements "$(ENTITLEMENTS)" --options runtime "$(APP_BUNDLE)"
+	codesign --force --deep --sign - "$(APP_BUNDLE)"
 
 # Install to /Applications + auto-launch on login
 install: dist
+	@launchctl unload "$(LAUNCHAGENT_PLIST)" 2>/dev/null || true
 	@pkill -f $(APP_NAME) 2>/dev/null || true
 	@sleep 1
+	@rm -rf "$(INSTALL_PATH)"
 	@cp -R "$(APP_BUNDLE)" "$(INSTALL_PATH)"
 	@mkdir -p "$(HOME)/Library/LaunchAgents"
 	@cp macos/Resources/$(LAUNCHAGENT).plist "$(LAUNCHAGENT_PLIST)"
-	@launchctl unload "$(LAUNCHAGENT_PLIST)" 2>/dev/null || true
 	@launchctl load "$(LAUNCHAGENT_PLIST)"
-	@open "$(INSTALL_PATH)"
 	@echo "Installed. Starts automatically on login."
 
 # Remove from /Applications + remove auto-launch
@@ -53,7 +53,7 @@ dist: release
 	mkdir -p "$(APP_BUNDLE)/Contents/MacOS"
 	cp "$(BINARY_RELEASE)" "$(APP_BUNDLE)/Contents/MacOS/$(APP_NAME)"
 	cp macos/Resources/Info.plist "$(APP_BUNDLE)/Contents/Info.plist"
-	codesign --force --deep --sign - --entitlements "$(ENTITLEMENTS)" --options runtime "$(APP_BUNDLE)"
+	codesign --force --deep --sign - "$(APP_BUNDLE)"
 	cd macos/.build && zip -r $(APP_NAME).zip $(APP_NAME).app
 	@echo "Built: macos/.build/$(APP_NAME).zip"
 

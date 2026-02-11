@@ -6,10 +6,14 @@
     <string>com.tokenshepherd.app</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/usr/bin/open</string>
-        <string>/Applications/TokenShepherd.app</string>
+        <string>/Applications/TokenShepherd.app/Contents/MacOS/TokenShepherd</string>
     </array>
     <key>RunAtLoad</key>
     <true/>
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
 </dict>
 </plist>
