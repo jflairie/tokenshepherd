@@ -114,8 +114,9 @@ No data leaves your machine except the API call to Anthropic.
 - **Expired window handling:** When `resetsAt` is in the past, state becomes calm. Hero shows "All clear / Quota just reset" + model label. Expired windows in details show "reset"/"done"/"—" instead of stale data. Updates naturally when API sends fresh window.
 - **Dead sheep:** Locked state shows inverted sheep at 12% opacity in icon. Menu shows `LIMIT REACHED` + `back at HH:MM`.
 - **Width:** 280px for all menu content (hero, details toggle, details content). Details padding 24px. Footer at 252px.
-- **No Hardened Runtime:** Ad-hoc signed without `--options runtime` or entitlements. Hardened Runtime + sandbox entitlements trigger ghost TCC prompts (Photos, Apple Music, network volume) on non-notarized apps. Plain ad-hoc signature is sufficient for keychain, notifications, and LaunchAgent.
-- **LaunchAgent runs binary directly:** Not via `open`. Enables `KeepAlive` (auto-restart on crash). Install order: `launchctl unload` → kill → remove → copy → `launchctl load` — must unload first or KeepAlive restarts the process mid-install.
+- **No Hardened Runtime, no entitlements:** Ad-hoc signed with plain `codesign --sign -`. Hardened Runtime and sandbox entitlements trigger ghost TCC prompts (Photos, Apple Music, network volume, Desktop) on non-notarized apps. Plain ad-hoc signature is sufficient.
+- **No subprocess spawning:** Token refresh was previously done by spawning `claude --print "hi"`, but macOS attributes child process TCC accesses to the parent. Claude CLI touches protected directories during init → Desktop/Photos/Music prompts blamed on TokenShepherd. Now we just wait — Claude Code refreshes its own token, we re-read the keychain next cycle.
+- **LaunchAgent via `open -W`:** `open` gives proper macOS app context (avoids TCC issues from direct binary launch). `-W` makes `open` wait for exit, so launchd can track it for `KeepAlive` (auto-restart on crash). Install order: `launchctl unload` → kill → remove → copy → load — must unload first or KeepAlive restarts mid-install.
 - **Keychain via `security` CLI:** `SecItemCopyMatching` (native API) triggers a scary password dialog for items created by other apps. `security find-generic-password` reads silently from the login keychain. Right trade-off for a non-notarized app.
 
 ## Key Documents
