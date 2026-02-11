@@ -62,12 +62,28 @@ class QuotaService: ObservableObject {
             return .error(error.localizedDescription)
         }
 
-        // 2. Check token expiry — Claude Code refreshes its own token, we just wait
+        // 2. Refresh token silently if expired
+        var activeToken = credentials.accessToken
+        var activeCredentials = credentials
         if credentials.isExpired {
-            return .error(APIError.tokenExpired.localizedDescription)
+            do {
+                let response = try await APIService.refreshToken(using: credentials.refreshToken)
+                let newCreds = OAuthCredentials(
+                    accessToken: response.accessToken,
+                    refreshToken: response.refreshToken ?? credentials.refreshToken,
+                    expiresAt: Date().addingTimeInterval(Double(response.expiresIn)),
+                    subscriptionType: credentials.subscriptionType,
+                    rateLimitTier: credentials.rateLimitTier
+                )
+                try KeychainService.writeCredentials(newCreds)
+                activeToken = newCreds.accessToken
+                activeCredentials = newCreds
+            } catch {
+                return .error("Can't reach Anthropic — will retry")
+            }
         }
-        let activeToken = credentials.accessToken
-        await MainActor.run { self.lastCredentials = credentials }
+        let resolvedCredentials = activeCredentials
+        await MainActor.run { self.lastCredentials = resolvedCredentials }
 
         // 3. Fetch quota from API
         let apiResponse: APIQuotaResponse
