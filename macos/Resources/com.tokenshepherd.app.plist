@@ -6,7 +6,9 @@
     <string>com.tokenshepherd.app</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/Applications/TokenShepherd.app/Contents/MacOS/TokenShepherd</string>
+        <string>/usr/bin/open</string>
+        <string>-W</string>
+        <string>/Applications/TokenShepherd.app</string>
     </array>
     <key>RunAtLoad</key>
     <true/>

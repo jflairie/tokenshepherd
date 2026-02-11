@@ -4,7 +4,6 @@ APP_NAME = TokenShepherd
 APP_BUNDLE = macos/.build/$(APP_NAME).app
 BINARY = macos/.build/arm64-apple-macosx/debug/$(APP_NAME)
 BINARY_RELEASE = macos/.build/arm64-apple-macosx/release/$(APP_NAME)
-ENTITLEMENTS = macos/Resources/TokenShepherd.entitlements
 INSTALL_PATH = /Applications/$(APP_NAME).app
 LAUNCHAGENT = com.tokenshepherd.app
 LAUNCHAGENT_PLIST = $(HOME)/Library/LaunchAgents/$(LAUNCHAGENT).plist

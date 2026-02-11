@@ -3,6 +3,7 @@ import Foundation
 enum APIError: Error, LocalizedError {
     case httpError(Int, String)
     case networkError(String)
+    case tokenExpired
 
     var errorDescription: String? {
         switch self {
@@ -10,6 +11,8 @@ enum APIError: Error, LocalizedError {
             return "API error (\(code)): \(body)"
         case .networkError(let msg):
             return "Network error: \(msg)"
+        case .tokenExpired:
+            return "Token expired — run any claude command to refresh"
         }
     }
 }
@@ -40,51 +43,5 @@ struct APIService {
 
         let decoder = JSONDecoder()
         return try decoder.decode(APIQuotaResponse.self, from: data)
-    }
-
-    static func triggerTokenRefresh() async -> Bool {
-        await withCheckedContinuation { continuation in
-            DispatchQueue.global(qos: .userInitiated).async {
-                let process = Process()
-                process.executableURL = URL(fileURLWithPath: "/bin/bash")
-                process.arguments = ["-c", "echo \"\" | claude --print \"hi\" 2>/dev/null"]
-
-                var env = ProcessInfo.processInfo.environment
-                let home = FileManager.default.homeDirectoryForCurrentUser.path
-                let base = env["PATH"] ?? "/usr/bin:/bin"
-                env["PATH"] = "\(home)/.local/bin:/usr/local/bin:/opt/homebrew/bin:" + base
-                process.environment = env
-
-                let devNull = FileHandle.nullDevice
-                process.standardOutput = devNull
-                process.standardError = devNull
-
-                var resumed = false
-                let lock = NSLock()
-
-                do {
-                    try process.run()
-
-                    // Kill after 10s if still running
-                    DispatchQueue.global().asyncAfter(deadline: .now() + 10) {
-                        if process.isRunning { process.terminate() }
-                    }
-
-                    process.terminationHandler = { p in
-                        lock.lock()
-                        guard !resumed else { lock.unlock(); return }
-                        resumed = true
-                        lock.unlock()
-                        continuation.resume(returning: p.terminationStatus == 0)
-                    }
-                } catch {
-                    lock.lock()
-                    guard !resumed else { lock.unlock(); return }
-                    resumed = true
-                    lock.unlock()
-                    continuation.resume(returning: false)
-                }
-            }
-        }
     }
 }

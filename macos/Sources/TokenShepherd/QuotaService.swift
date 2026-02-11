@@ -62,26 +62,12 @@ class QuotaService: ObservableObject {
             return .error(error.localizedDescription)
         }
 
-        // 2. Refresh token if expired
-        var activeToken = credentials.accessToken
+        // 2. Check token expiry — Claude Code refreshes its own token, we just wait
         if credentials.isExpired {
-            NSLog("[TokenShepherd] Token expired, triggering refresh...")
-            let refreshed = await APIService.triggerTokenRefresh()
-            if refreshed {
-                // Re-read credentials after refresh
-                do {
-                    let newCreds = try KeychainService.readCredentials()
-                    activeToken = newCreds.accessToken
-                    await MainActor.run { self.lastCredentials = newCreds }
-                } catch {
-                    return .error("Token refresh succeeded but re-read failed: \(error.localizedDescription)")
-                }
-            } else {
-                return .error("Token expired and refresh failed")
-            }
-        } else {
-            await MainActor.run { self.lastCredentials = credentials }
+            return .error(APIError.tokenExpired.localizedDescription)
         }
+        let activeToken = credentials.accessToken
+        await MainActor.run { self.lastCredentials = credentials }
 
         // 3. Fetch quota from API
         let apiResponse: APIQuotaResponse
