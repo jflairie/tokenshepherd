@@ -19,7 +19,9 @@ A guardian, not a dashboard. Mac menu bar app that watches your Claude Code quot
 ## Commands
 
 ```bash
-make run        # Build, sign, bundle as .app, launch
+make run        # Build, sign, bundle as .app, launch (dev)
+make install    # Release build → /Applications + LaunchAgent (auto-start on login)
+make uninstall  # Remove from /Applications + LaunchAgent
 make build      # Build Swift binary only
 make dist       # Release build + sign + zip for distribution
 make clean      # Clean Swift build artifacts
@@ -112,6 +114,9 @@ No data leaves your machine except the API call to Anthropic.
 - **Expired window handling:** When `resetsAt` is in the past, state becomes calm. Hero shows "All clear / Quota just reset" + model label. Expired windows in details show "reset"/"done"/"—" instead of stale data. Updates naturally when API sends fresh window.
 - **Dead sheep:** Locked state shows inverted sheep at 12% opacity in icon. Menu shows `LIMIT REACHED` + `back at HH:MM`.
 - **Width:** 280px for all menu content (hero, details toggle, details content). Details padding 24px. Footer at 252px.
+- **No Hardened Runtime:** Ad-hoc signed without `--options runtime` or entitlements. Hardened Runtime + sandbox entitlements trigger ghost TCC prompts (Photos, Apple Music, network volume) on non-notarized apps. Plain ad-hoc signature is sufficient for keychain, notifications, and LaunchAgent.
+- **LaunchAgent runs binary directly:** Not via `open`. Enables `KeepAlive` (auto-restart on crash). Install order: `launchctl unload` → kill → remove → copy → `launchctl load` — must unload first or KeepAlive restarts the process mid-install.
+- **Keychain via `security` CLI:** `SecItemCopyMatching` (native API) triggers a scary password dialog for items created by other apps. `security find-generic-password` reads silently from the login keychain. Right trade-off for a non-notarized app.
 
 ## Key Documents
 
