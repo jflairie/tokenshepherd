@@ -3,9 +3,7 @@ import SwiftUI
 struct BindingView: View {
     let quota: QuotaData
     let state: ShepherdState
-    let bindingPace: PaceInfo?
     let projectedAtReset: Double?
-    let trend: TrendInfo?
     let sparklineData: [Double]
     let tokenSummary: TokenSummary?
 
@@ -122,21 +120,6 @@ struct BindingView: View {
         }
     }
 
-    /// Grounds the user: current state + limit warning when applicable
-    @ViewBuilder
-    private var insightLine: some View {
-        let currentPct = Int(bindingWindow.utilization * 100)
-        if let pace = bindingPace, pace.showWarning {
-            Text("\(currentPct)% now \u{00B7} limit ~\(pace.limitAtFormatted)")
-                .font(.system(.caption, weight: .medium))
-                .foregroundStyle(.secondary)
-        } else {
-            Text("\(currentPct)% now")
-                .font(.system(.caption, weight: .medium))
-                .foregroundStyle(.secondary)
-        }
-    }
-
     @ViewBuilder
     private var modelLabel: some View {
         if let model = tokenSummary?.dominantModel {
@@ -215,18 +198,11 @@ struct DetailsToggleView: View {
 
 struct DetailsContentView: View {
     let quota: QuotaData
-    let fiveHourPace: PaceInfo?
-    let sevenDayPace: PaceInfo?
     let tokenSummary: TokenSummary?
-    let trend: TrendInfo?
     let bindingProjection: Double?
 
     private var isFiveHourBinding: Bool {
         quota.fiveHour.utilization >= quota.sevenDay.utilization
-    }
-    private var bindingWindow: QuotaWindow { quota.bindingWindow }
-    private var nonBindingWindow: QuotaWindow {
-        isFiveHourBinding ? quota.sevenDay : quota.fiveHour
     }
 
     var body: some View {
@@ -286,6 +262,7 @@ struct DetailsContentView: View {
 
     // MARK: - Window Table (windows as columns, data as rows)
 
+    private static let mutedColor = Color.secondary.opacity(0.3)
     private let colLabel: CGFloat = 48
     private let colShort: CGFloat = 80
     private let colLong: CGFloat = 104
@@ -317,10 +294,10 @@ struct DetailsContentView: View {
         // Now
         tableRow(label: "Now") {
             cellText(fhExpired ? "reset" : fh.isLocked ? "100%" : "\(Int(fh.utilization * 100))%",
-                     color: fhExpired ? Color.secondary.opacity(0.3) : fh.isLocked ? .red : utilColor(fh.utilization),
+                     color: fhExpired ? Self.mutedColor : fh.isLocked ? .red : utilColor(fh.utilization),
                      width: colShort)
             cellText(sdExpired ? "reset" : sd.isLocked ? "100%" : "\(Int(sd.utilization * 100))%",
-                     color: sdExpired ? Color.secondary.opacity(0.3) : sd.isLocked ? .red : utilColor(sd.utilization),
+                     color: sdExpired ? Self.mutedColor : sd.isLocked ? .red : utilColor(sd.utilization),
                      width: colLong)
         }
 
@@ -338,10 +315,10 @@ struct DetailsContentView: View {
         // Resets
         tableRow(label: "Resets") {
             cellText(fhExpired ? "done" : formatTimeShort(fh.resetsAt),
-                     color: fh.isLocked ? .red : Color.secondary.opacity(0.3),
+                     color: fh.isLocked ? .red : Self.mutedColor,
                      width: colShort)
             cellText(sdExpired ? "done" : formatTimeShort(sd.resetsAt),
-                     color: sd.isLocked ? .red : Color.secondary.opacity(0.3),
+                     color: sd.isLocked ? .red : Self.mutedColor,
                      width: colLong)
         }
     }
@@ -366,22 +343,22 @@ struct DetailsContentView: View {
     @ViewBuilder
     private func bindingPaceCell(expired: Bool, width: CGFloat) -> some View {
         if expired {
-            cellText("—", color: Color.secondary.opacity(0.3), width: width)
+            cellText("—", color: Self.mutedColor, width: width)
         } else if let proj = bindingProjection {
             cellText("~\(Int(proj * 100))%", color: utilColor(proj), width: width)
         } else {
-            cellText("—", color: Color.secondary.opacity(0.3), width: width)
+            cellText("—", color: Self.mutedColor, width: width)
         }
     }
 
     @ViewBuilder
     private func paceCell(window: QuotaWindow, duration: TimeInterval, expired: Bool, width: CGFloat) -> some View {
         if expired {
-            cellText("—", color: Color.secondary.opacity(0.3), width: width)
+            cellText("—", color: Self.mutedColor, width: width)
         } else if let proj = projectedUtil(for: window, duration: duration) {
             cellText("~\(Int(proj * 100))%", color: utilColor(proj), width: width)
         } else {
-            cellText("—", color: Color.secondary.opacity(0.3), width: width)
+            cellText("—", color: Self.mutedColor, width: width)
         }
     }
 

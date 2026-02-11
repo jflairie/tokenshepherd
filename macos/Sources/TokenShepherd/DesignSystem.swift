@@ -1,4 +1,3 @@
-import AppKit
 import SwiftUI
 
 enum ShepherdState {
@@ -16,21 +15,6 @@ enum ShepherdState {
         }
     }
 
-    var nsColor: NSColor? {
-        switch self {
-        case .calm:                  return nil
-        case .trajectory, .warm:     return .systemOrange
-        case .low, .locked:          return .systemRed
-        }
-    }
-
-    var isWarning: Bool {
-        switch self {
-        case .calm: return false
-        default: return true
-        }
-    }
-
     var chartColor: Color {
         switch self {
         case .calm:                  return .green
@@ -42,8 +26,7 @@ enum ShepherdState {
     static func from(
         window: QuotaWindow,
         pace: PaceInfo?,
-        projectedAtReset: Double?,
-        trend: TrendInfo?
+        projectedAtReset: Double?
     ) -> ShepherdState {
         // Window expired — data is stale, treat as calm
         if window.resetsAt.timeIntervalSinceNow <= 0 { return .calm }

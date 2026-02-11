@@ -3,9 +3,9 @@ import SwiftUI
 import Combine
 
 class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
-    var statusItem: NSStatusItem!
-    let quotaService = QuotaService()
-    let notificationService = NotificationService()
+    private var statusItem: NSStatusItem!
+    private let quotaService = QuotaService()
+    private let notificationService = NotificationService()
     private var cancellables = Set<AnyCancellable>()
     private var cachedTokenSummary: TokenSummary?
     private var statsCacheTimer: Timer?
@@ -17,11 +17,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var footerItem: NSMenuItem!
     private var detailsVisible = false
 
-    // Cache latest quota data for details updates
+    // Cache for details updates
     private var latestQuota: QuotaData?
-    private var latestFiveHourPace: PaceInfo?
-    private var latestSevenDayPace: PaceInfo?
-    private var latestTrend: TrendInfo?
     private var latestProjection: Double?
 
     func setupStatusItem() {
@@ -102,6 +99,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self?.cachedTokenSummary = StatsCache.tokenSummary()
         }
 
+        quotaService.refresh()
         NSLog("[TokenShepherd] Ready")
     }
 
@@ -109,15 +107,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         quotaService.refresh()
     }
 
-    @objc func refresh() {
+    @objc private func refresh() {
         quotaService.refresh()
     }
 
-    @objc func quit() {
+    @objc private func quit() {
         NSApplication.shared.terminate(nil)
     }
 
-    @objc func copyStatus() {
+    @objc private func copyStatus() {
         guard case .loaded(let quota) = quotaService.state else { return }
         let binding = quota.bindingWindow
         let isFiveHour = quota.fiveHour.utilization >= quota.sevenDay.utilization
@@ -136,7 +134,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         NSPasteboard.general.setString("\(bindingPart) | \(nonBindingPart)", forType: .string)
     }
 
-    @objc func openDashboard() {
+    @objc private func openDashboard() {
         NSWorkspace.shared.open(URL(string: "https://claude.ai/settings")!)
     }
 
@@ -164,10 +162,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard let quota = latestQuota else { return }
         let detailsView = NSHostingView(rootView: DetailsContentView(
             quota: quota,
-            fiveHourPace: latestFiveHourPace,
-            sevenDayPace: latestSevenDayPace,
             tokenSummary: cachedTokenSummary,
-            trend: latestTrend,
             bindingProjection: latestProjection
         ))
         detailsView.frame.size = detailsView.fittingSize
@@ -267,23 +262,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             latestState = ShepherdState.from(
                 window: bindingWindow,
                 pace: bindingPace,
-                projectedAtReset: projectedAtReset,
-                trend: trend
+                projectedAtReset: projectedAtReset
             )
 
             // Cache for details
             latestQuota = quota
-            latestFiveHourPace = fiveHourPace
-            latestSevenDayPace = sevenDayPace
-            latestTrend = trend
             latestProjection = projectedAtReset
 
             let heroView = NSHostingView(rootView: BindingView(
                 quota: quota,
                 state: latestState,
-                bindingPace: bindingPace,
                 projectedAtReset: projectedAtReset,
-                trend: trend,
                 sparklineData: sparklineData,
                 tokenSummary: cachedTokenSummary
             ))
@@ -398,6 +387,5 @@ let delegate = AppDelegate()
 app.delegate = delegate
 
 delegate.setupStatusItem()
-delegate.quotaService.refresh()
 
 app.run()
