@@ -50,9 +50,9 @@ struct APIService {
                 process.arguments = ["-c", "echo \"\" | claude --print \"hi\" 2>/dev/null"]
 
                 var env = ProcessInfo.processInfo.environment
-                if let path = env["PATH"] {
-                    env["PATH"] = "/usr/local/bin:/opt/homebrew/bin:" + path
-                }
+                let home = FileManager.default.homeDirectoryForCurrentUser.path
+                let base = env["PATH"] ?? "/usr/bin:/bin"
+                env["PATH"] = "\(home)/.local/bin:/usr/local/bin:/opt/homebrew/bin:" + base
                 process.environment = env
 
                 let devNull = FileHandle.nullDevice

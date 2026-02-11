@@ -204,10 +204,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                         .font(.system(.caption))
                         .foregroundStyle(.secondary)
                         .lineLimit(3)
-                    Text("\u{2318}R to retry")
-                        .font(.system(.caption2))
-                        .foregroundStyle(.tertiary)
-                        .padding(.top, 2)
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
