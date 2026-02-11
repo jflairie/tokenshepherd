@@ -2,7 +2,7 @@
 
 ## What This Is
 
-A guardian, not a dashboard. Mac menu bar app that watches your Claude Code quota so you don't have to. Calm sheep = fine. Orange sheep = watch out. Red sheep = locked. If the sheep is calm, you never need to click.
+A guardian, not a dashboard. Mac menu bar app that watches your Claude Code quota so you don't have to. Calm sheep = fine. Orange/red sheep = watch out. Dead sheep = locked. If the sheep is calm, you never need to click.
 
 ## Philosophy
 
@@ -72,12 +72,12 @@ KeychainService → OAuthCredentials
 
 | State | Condition | Icon | Hero |
 |---|---|---|---|
-| Calm | util < 70%, no trajectory | Plain sheep (template) | `42%` primary + context |
-| Trajectory | projected ≥ 70%, util < 70% | Orange-tinted sheep | `AT THIS PACE` `~85%` orange + `42% now` |
-| Warm | util 70-89% | Orange-tinted sheep | `AT THIS PACE` `~92%` orange + `78% now` (or just `78%` if stable) |
-| Low | util 90-99% | Red-tinted sheep | `AT THIS PACE` `~99%` red + `94% now` |
+| Calm | util < 70%, no trajectory | Plain sheep | `42%` primary + context |
+| Trajectory | projected ≥ 70%, util < 70% | Orange sheep | `AT THIS PACE` `~85% at reset 5:00 PM` orange + `Opus · 42% now` |
+| Warm | util 70-89%, projected < 90% | Orange sheep | `AT THIS PACE` `~85% at reset Thu 1 PM` orange + `Opus · 78% now` |
+| Low | util ≥ 90% OR projected ≥ 90% | Red sheep | `AT THIS PACE` `~99% at reset Thu 1 PM` red + `Opus · 79% now` |
 | Locked | util ≥ 100% | Dead sheep (flipped, 12%) | `LIMIT REACHED` + `back at HH:MM` red |
-| Expired | resetsAt in past | Plain sheep (calm) | `All clear` + `Quota just reset` — no stale data |
+| Expired | resetsAt in past | Plain sheep (calm) | `All clear` + `Quota just reset` + model label |
 
 **Color hierarchy:** Only the big number gets state color. Everything else is `.secondary`. If everything is colored, nothing is colored.
 
@@ -104,14 +104,14 @@ No data leaves your machine except the API call to Anthropic.
 ### Key Design Decisions
 
 - **Fuzzy date matching:** API `resetsAt` oscillates by ~1s between fetches. All date comparisons use 60s tolerance.
-- **Sheep-only icon:** No text suffix in menu bar. Sheep emoji flipped via CGContext transform. Calm = `isTemplate: false` (plain emoji). Tinted = `.sourceAtop` blend with color. Dead = flipped vertically + 12% alpha.
-- **Projection-driven hero:** Big number answers "will I be able to keep working?" — shows projected utilization at reset, not current. "AT THIS PACE" label makes it clear this is a projection. Current value grounds below. Only the big number is colored.
-- **Insight line:** Only speaks when there's something actionable. Pace warning: "78% now · limit ~5:30 PM". No projection: no line. Silence IS the calm state.
+- **Sheep-only icon:** No text suffix in menu bar. Sheep emoji flipped via CGContext transform. Calm = `isTemplate: false` (plain emoji). Tinted = `.sourceAtop` blend at 60% alpha for vibrancy. Dead = flipped vertically + 12% alpha.
+- **Projection-driven hero:** Big number answers "will I be able to keep working?" — shows projected utilization at reset, not current. "AT THIS PACE" label frames the projection. Reset time sits on the same line as the big number ("~89% at reset Thu 1 PM") — anchors the prediction to its deadline. Model + current util merge into one context line below ("Opus · 77% now"). Only the big number is colored.
+- **State severity from projection:** If projected ≥ 90%, state becomes `.low` (red) even if current util is only 77%. Prevents orange hero with red details.
 - **Interactive chart:** Fixed 0-100% y-axis. Delta bars show usage bursts. Neutral dashed threshold lines (`.primary.opacity(0.06)`) — barely visible, don't compete with data. Hover reveals utilization %, time-ago, and delta. Chart height 40px. Hidden when window expired.
-- **Collapsible details:** Collapsed by default. Both quota windows with clock icons, pace evidence as single row ("78% in 3h 55m"), Sonnet 7d, extra usage, token spend. Hidden when window expired — no stale data.
-- **Expired window handling:** When `resetsAt` is in the past, state becomes calm. Hero shows "All clear / Quota just reset" — no stale numbers, no chart, no details. Updates naturally when API sends fresh window.
+- **Collapsible details:** Collapsed by default. Table with Short/Long columns, Now/Pace/Resets rows. Binding window pace uses same rate+trend projection as hero (consistent numbers). Sonnet 7d, extra usage, token spend below. Compact dates in table (day abbreviation, no "tomorrow").
+- **Expired window handling:** When `resetsAt` is in the past, state becomes calm. Hero shows "All clear / Quota just reset" + model label. Expired windows in details show "reset"/"done"/"—" instead of stale data. Updates naturally when API sends fresh window.
 - **Dead sheep:** Locked state shows inverted sheep at 12% opacity in icon. Menu shows `LIMIT REACHED` + `back at HH:MM`.
-- **Width:** 280px for all menu content (hero, details toggle, details content). Footer at 252px (280 - 28 padding).
+- **Width:** 280px for all menu content (hero, details toggle, details content). Details padding 24px. Footer at 252px.
 
 ## Key Documents
 
