@@ -2,35 +2,36 @@ import SwiftUI
 
 struct BindingView: View {
     let quota: QuotaData
-    let state: ShepherdState
-    let projectedAtReset: Double?
+    let fhState: ShepherdState
+    let sdState: ShepherdState
+    let fhProjection: Double?
+    let sdProjection: Double?
     let sparklineData: [Double]
+    let sparklineElapsed: TimeInterval
     let tokenSummary: TokenSummary?
 
-    private var bindingWindow: QuotaWindow { quota.bindingWindow }
-    private var isFiveHourBinding: Bool {
-        quota.fiveHour.utilization >= quota.sevenDay.utilization
-    }
+    private var fhExpired: Bool { quota.fiveHour.resetsAt.timeIntervalSinceNow <= 0 }
+    private var sdExpired: Bool { quota.sevenDay.resetsAt.timeIntervalSinceNow <= 0 }
+    private var bothExpired: Bool { fhExpired && sdExpired }
 
-    private var windowExpired: Bool {
-        bindingWindow.resetsAt.timeIntervalSinceNow <= 0
-    }
-
-    private var showsProjection: Bool {
-        guard !windowExpired, let projected = projectedAtReset else { return false }
-        return projected >= 0.7
-            && Int(projected * 100) > Int(bindingWindow.utilization * 100) + 5
+    private var worstState: ShepherdState {
+        fhState.severity >= sdState.severity ? fhState : sdState
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            heroSection
+        VStack(alignment: .leading, spacing: 8) {
+            if bothExpired {
+                expiredHero
+            } else {
+                dualWindowHero
+            }
 
-            if !windowExpired && !bindingWindow.isLocked && sparklineHasVariation {
+            if !bothExpired && sparklineHasVariation
+                && !quota.fiveHour.isLocked && !quota.sevenDay.isLocked {
                 SparklineView(
                     data: sparklineData,
-                    color: state.chartColor,
-                    windowDuration: max(quota.bindingWindowDuration - bindingWindow.resetsAt.timeIntervalSinceNow, 0),
+                    color: worstState.chartColor,
+                    windowDuration: sparklineElapsed,
                     windowEnd: Date()
                 )
             }
@@ -40,85 +41,105 @@ struct BindingView: View {
         .frame(width: 280, alignment: .leading)
     }
 
-    // MARK: - Hero
+    // MARK: - Expired (both windows reset)
 
     @ViewBuilder
-    private var heroSection: some View {
-        if windowExpired {
-            // Window ended — no stale numbers, just the answer: you're fine
-            VStack(alignment: .leading, spacing: 4) {
-                Text("All clear")
-                    .font(.system(size: 20, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.primary)
-                Text("Quota just reset")
-                    .font(.system(.caption, weight: .medium))
-                    .foregroundStyle(.secondary)
-                modelLabel
-            }
-        } else if bindingWindow.isLocked {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("LIMIT REACHED")
-                    .font(.system(.caption, weight: .semibold))
-                    .tracking(0.5)
-                    .foregroundStyle(state.color)
-
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Image(systemName: "clock")
-                        .font(.system(size: 14, weight: .medium))
-                    Text("back at \(formatTime(bindingWindow.resetsAt))")
-                        .font(.system(size: 18, weight: .semibold, design: .rounded))
-                }
-                .foregroundStyle(state.color)
-            }
-        } else if showsProjection, let projected = projectedAtReset {
-            // Projection drives the hero — show where you're heading
-            VStack(alignment: .leading, spacing: 4) {
-                Text("AT THIS PACE")
-                    .font(.system(.caption, weight: .semibold))
-                    .tracking(0.5)
-                    .foregroundStyle(.secondary)
-
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text("~\(Int(projected * 100))%")
-                        .font(.system(size: 32, weight: .bold, design: .rounded))
-                        .monospacedDigit()
-                        .foregroundStyle(state.color)
-                    Text("at reset \(formatTime(bindingWindow.resetsAt))")
-                        .font(.system(.caption, weight: .medium))
-                        .foregroundStyle(.secondary)
-                }
-
-                HStack(spacing: 4) {
-                    if let model = tokenSummary?.dominantModel {
-                        HStack(spacing: 3) {
-                            Image(systemName: "cpu")
-                                .font(.system(.caption2))
-                            Text(model)
-                                .font(.system(.caption2))
-                        }
-
-                        Text("\u{00B7}")
-                            .font(.system(.caption2))
-                            .foregroundStyle(.quaternary)
-                    }
-
-                    Text("\(Int(bindingWindow.utilization * 100))% now")
-                        .font(.system(.caption2))
-                }
+    private var expiredHero: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("All clear")
+                .font(.system(size: 20, weight: .semibold, design: .rounded))
+                .foregroundStyle(.primary)
+            Text("Quota just reset")
+                .font(.system(.caption, weight: .medium))
                 .foregroundStyle(.secondary)
-            }
-        } else {
-            // Current utilization — no meaningful projection
-            VStack(alignment: .leading, spacing: 4) {
-                Text("\(Int(bindingWindow.utilization * 100))%")
-                    .font(.system(size: 32, weight: .bold, design: .rounded))
-                    .monospacedDigit()
-                    .foregroundStyle(state.color)
+            modelLabel
+        }
+    }
 
-                contextLine
+    // MARK: - Dual Window Hero
+
+    @ViewBuilder
+    private var dualWindowHero: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            modelLabel
+
+            HStack(alignment: .top, spacing: 0) {
+                windowColumn(
+                    label: "5h",
+                    window: quota.fiveHour,
+                    state: fhState,
+                    projection: fhProjection,
+                    expired: fhExpired
+                )
+                windowColumn(
+                    label: "7d",
+                    window: quota.sevenDay,
+                    state: sdState,
+                    projection: sdProjection,
+                    expired: sdExpired
+                )
             }
         }
     }
+
+    @ViewBuilder
+    private func windowColumn(
+        label: String,
+        window: QuotaWindow,
+        state: ShepherdState,
+        projection: Double?,
+        expired: Bool
+    ) -> some View {
+        VStack(spacing: 2) {
+            Text(label)
+                .font(.system(.caption2, weight: .semibold))
+                .foregroundStyle(.tertiary)
+
+            if expired {
+                Text("\u{2014}")
+                    .font(.system(size: 24, weight: .bold, design: .rounded))
+                    .foregroundStyle(.secondary.opacity(0.3))
+                Text("reset")
+                    .font(.system(.caption2))
+                    .foregroundStyle(.secondary.opacity(0.3))
+            } else if window.isLocked {
+                Text("100%")
+                    .font(.system(size: 24, weight: .bold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(state.color)
+                Text("LOCKED")
+                    .font(.system(.caption2, weight: .semibold))
+                    .foregroundStyle(state.color)
+                Text("back \(formatTimeShort(window.resetsAt))")
+                    .font(.system(.caption2))
+                    .foregroundStyle(state.color)
+            } else {
+                Text("\(Int(window.utilization * 100))%")
+                    .font(.system(size: 24, weight: .bold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(state.color)
+
+                if let proj = projection,
+                   proj >= 0.7,
+                   Int(proj * 100) > Int(window.utilization * 100) + 5 {
+                    Text("~\(Int(proj * 100))% pace")
+                        .font(.system(.caption2, weight: .medium))
+                        .foregroundStyle(projectionColor(proj))
+                } else {
+                    Text("\u{2014}")
+                        .font(.system(.caption2))
+                        .foregroundStyle(.secondary.opacity(0.3))
+                }
+
+                Text("resets \(formatTimeShort(window.resetsAt))")
+                    .font(.system(.caption2))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    // MARK: - Helpers
 
     @ViewBuilder
     private var modelLabel: some View {
@@ -133,33 +154,23 @@ struct BindingView: View {
         }
     }
 
-    @ViewBuilder
-    private var contextLine: some View {
-        HStack(spacing: 4) {
-            if let model = tokenSummary?.dominantModel {
-                HStack(spacing: 3) {
-                    Image(systemName: "cpu")
-                        .font(.system(.caption2))
-                    Text(model)
-                        .font(.system(.caption2))
-                }
-
-                Text("\u{00B7}")
-                    .font(.system(.caption2))
-                    .foregroundStyle(.quaternary)
-            }
-
-            HStack(spacing: 3) {
-                Image(systemName: "clock")
-                    .font(.system(.caption2))
-                Text(formatTime(bindingWindow.resetsAt))
-                    .font(.system(.caption2))
-            }
-        }
-        .foregroundStyle(.secondary)
+    private func projectionColor(_ projection: Double) -> Color {
+        if projection >= 0.9 { return .red }
+        if projection >= 0.7 { return .orange }
+        return .secondary
     }
 
-    // MARK: - Helpers
+    private func formatTimeShort(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale.current
+        let calendar = Calendar.current
+        if calendar.isDate(date, inSameDayAs: Date()) {
+            formatter.dateFormat = "h:mm a"
+        } else {
+            formatter.dateFormat = "EEE h a"
+        }
+        return formatter.string(from: date)
+    }
 
     private var sparklineHasVariation: Bool {
         guard sparklineData.count >= 2,
@@ -194,22 +205,15 @@ struct DetailsToggleView: View {
     }
 }
 
-// MARK: - Details Content
+// MARK: - Details Content (analytics)
 
 struct DetailsContentView: View {
     let quota: QuotaData
     let tokenSummary: TokenSummary?
-    let bindingProjection: Double?
-
-    private var isFiveHourBinding: Bool {
-        quota.fiveHour.utilization >= quota.sevenDay.utilization
-    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            // Window table
-            windowTable
-
+            // Sonnet 7d (only when active)
             if let sonnet = quota.sevenDaySonnet, sonnet.utilization > 0 {
                 detailRow(
                     label: "Sonnet 7d",
@@ -218,6 +222,7 @@ struct DetailsContentView: View {
                 )
             }
 
+            // Extra usage
             if quota.extraUsage.isEnabled,
                let used = quota.extraUsage.usedCredits,
                let limit = quota.extraUsage.monthlyLimit {
@@ -228,6 +233,7 @@ struct DetailsContentView: View {
                 )
             }
 
+            // Token counts
             if let summary = tokenSummary, summary.last7Days > 0 {
                 Rectangle()
                     .fill(.quaternary.opacity(0.5))
@@ -254,123 +260,28 @@ struct DetailsContentView: View {
                         .foregroundStyle(.secondary)
                 )
             }
+
+            // Window history
+            let summaries = WindowSummaryStore.read()
+            let recentLocks = summaries.filter {
+                $0.wasLocked && $0.closedAt > Date().addingTimeInterval(-7 * 86400)
+            }
+            if !recentLocks.isEmpty {
+                Rectangle()
+                    .fill(.quaternary.opacity(0.5))
+                    .frame(height: 0.5)
+                    .padding(.vertical, 2)
+
+                detailRow(
+                    label: "Locked (7d)",
+                    value: Text("\(recentLocks.count)\u{00D7}")
+                        .foregroundStyle(.red)
+                )
+            }
         }
         .padding(.horizontal, 24)
         .padding(.vertical, 6)
         .frame(width: 280, alignment: .leading)
-    }
-
-    // MARK: - Window Table (windows as columns, data as rows)
-
-    private static let mutedColor = Color.secondary.opacity(0.3)
-    private let colLabel: CGFloat = 48
-    private let colShort: CGFloat = 80
-    private let colLong: CGFloat = 104
-
-    @ViewBuilder
-    private var windowTable: some View {
-        let fh = quota.fiveHour
-        let sd = quota.sevenDay
-        let fhExpired = fh.resetsAt.timeIntervalSinceNow <= 0
-        let sdExpired = sd.resetsAt.timeIntervalSinceNow <= 0
-
-        // Header
-        HStack(spacing: 0) {
-            Text("")
-                .frame(width: colLabel, alignment: .leading)
-            Text("Short")
-                .frame(width: colShort, alignment: .trailing)
-            Text("Long")
-                .frame(width: colLong, alignment: .trailing)
-        }
-        .font(.system(.caption2, weight: .semibold))
-        .foregroundStyle(.tertiary)
-
-        Rectangle()
-            .fill(.quaternary.opacity(0.4))
-            .frame(height: 0.5)
-            .padding(.vertical, 1)
-
-        // Now
-        tableRow(label: "Now") {
-            cellText(fhExpired ? "reset" : fh.isLocked ? "100%" : "\(Int(fh.utilization * 100))%",
-                     color: fhExpired ? Self.mutedColor : fh.isLocked ? .red : utilColor(fh.utilization),
-                     width: colShort)
-            cellText(sdExpired ? "reset" : sd.isLocked ? "100%" : "\(Int(sd.utilization * 100))%",
-                     color: sdExpired ? Self.mutedColor : sd.isLocked ? .red : utilColor(sd.utilization),
-                     width: colLong)
-        }
-
-        // Pace — binding window uses hero projection (rate+trend), non-binding uses rate-only
-        tableRow(label: "Pace") {
-            if isFiveHourBinding {
-                bindingPaceCell(expired: fhExpired, width: colShort)
-                paceCell(window: sd, duration: 604_800, expired: sdExpired, width: colLong)
-            } else {
-                paceCell(window: fh, duration: 18_000, expired: fhExpired, width: colShort)
-                bindingPaceCell(expired: sdExpired, width: colLong)
-            }
-        }
-
-        // Resets
-        tableRow(label: "Resets") {
-            cellText(fhExpired ? "done" : formatTimeShort(fh.resetsAt),
-                     color: fh.isLocked ? .red : Self.mutedColor,
-                     width: colShort)
-            cellText(sdExpired ? "done" : formatTimeShort(sd.resetsAt),
-                     color: sd.isLocked ? .red : Self.mutedColor,
-                     width: colLong)
-        }
-    }
-
-    private func tableRow<C: View>(label: String, @ViewBuilder content: () -> C) -> some View {
-        HStack(spacing: 0) {
-            Text(label)
-                .font(.system(.caption2, weight: .medium))
-                .foregroundStyle(.tertiary)
-                .frame(width: colLabel, alignment: .leading)
-            content()
-        }
-    }
-
-    private func cellText(_ text: String, color: Color, width: CGFloat) -> some View {
-        Text(text)
-            .font(.system(.caption).monospacedDigit())
-            .foregroundStyle(color)
-            .frame(width: width, alignment: .trailing)
-    }
-
-    @ViewBuilder
-    private func bindingPaceCell(expired: Bool, width: CGFloat) -> some View {
-        if expired {
-            cellText("—", color: Self.mutedColor, width: width)
-        } else if let proj = bindingProjection {
-            cellText("~\(Int(proj * 100))%", color: utilColor(proj), width: width)
-        } else {
-            cellText("—", color: Self.mutedColor, width: width)
-        }
-    }
-
-    @ViewBuilder
-    private func paceCell(window: QuotaWindow, duration: TimeInterval, expired: Bool, width: CGFloat) -> some View {
-        if expired {
-            cellText("—", color: Self.mutedColor, width: width)
-        } else if let proj = projectedUtil(for: window, duration: duration) {
-            cellText("~\(Int(proj * 100))%", color: utilColor(proj), width: width)
-        } else {
-            cellText("—", color: Self.mutedColor, width: width)
-        }
-    }
-
-    private func projectedUtil(for window: QuotaWindow, duration: TimeInterval) -> Double? {
-        let timeToReset = window.resetsAt.timeIntervalSinceNow
-        guard timeToReset > 0, window.utilization > 0.01, !window.isLocked else { return nil }
-        let elapsed = duration - timeToReset
-        guard elapsed > 60 else { return nil }
-        let rate = window.utilization / elapsed
-        let projected = min(rate * duration, 1.0)
-        guard Int(projected * 100) > Int(window.utilization * 100) + 5 else { return nil }
-        return projected
     }
 
     private func utilColor(_ util: Double) -> Color {
@@ -390,18 +301,6 @@ struct DetailsContentView: View {
         }
     }
 
-    private func formatTimeShort(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale.current
-        let calendar = Calendar.current
-        if calendar.isDate(date, inSameDayAs: Date()) {
-            formatter.dateFormat = "h:mm a"
-        } else {
-            formatter.dateFormat = "EEE h:mm a"
-        }
-        return formatter.string(from: date)
-    }
-
     private func formatTokenCount(_ count: Int) -> String {
         if count >= 1_000_000 {
             return String(format: "%.1fM tokens", Double(count) / 1_000_000)
@@ -410,5 +309,4 @@ struct DetailsContentView: View {
         }
         return "\(count) tokens"
     }
-
 }

@@ -19,7 +19,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     // Cache for details updates
     private var latestQuota: QuotaData?
-    private var latestProjection: Double?
 
     func setupStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -117,21 +116,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func copyStatus() {
         guard case .loaded(let quota) = quotaService.state else { return }
-        let binding = quota.bindingWindow
-        let isFiveHour = quota.fiveHour.utilization >= quota.sevenDay.utilization
-        let nonBinding = isFiveHour ? quota.sevenDay : quota.fiveHour
-
-        let bindingPart: String
-        if binding.isLocked {
-            bindingPart = "Locked \u{00B7} back at \(formatTime(binding.resetsAt))"
-        } else {
-            bindingPart = "\(Int(binding.utilization * 100))% \u{00B7} resets \(formatTime(binding.resetsAt))"
-        }
-
-        let nonBindingPart = "\(Int(nonBinding.utilization * 100))% \u{00B7} resets \(formatTime(nonBinding.resetsAt))"
-
+        let fh = quota.fiveHour
+        let sd = quota.sevenDay
+        let fhPart = fh.isLocked ? "5h: Locked" : "5h: \(Int(fh.utilization * 100))%"
+        let sdPart = sd.isLocked ? "7d: Locked" : "7d: \(Int(sd.utilization * 100))%"
         NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString("\(bindingPart) | \(nonBindingPart)", forType: .string)
+        NSPasteboard.general.setString("\(fhPart) | \(sdPart)", forType: .string)
     }
 
     @objc private func openDashboard() {
@@ -162,8 +152,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard let quota = latestQuota else { return }
         let detailsView = NSHostingView(rootView: DetailsContentView(
             quota: quota,
-            tokenSummary: cachedTokenSummary,
-            bindingProjection: latestProjection
+            tokenSummary: cachedTokenSummary
         ))
         detailsView.frame.size = detailsView.fittingSize
         detailsContentItem.view = detailsView
@@ -217,59 +206,48 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let fiveHourPace = PaceCalculator.pace(for: quota.fiveHour, windowDuration: PaceCalculator.fiveHourDuration)
             let sevenDayPace = PaceCalculator.pace(for: quota.sevenDay, windowDuration: PaceCalculator.sevenDayDuration)
 
-            let isFiveHour = quota.fiveHour.utilization >= quota.sevenDay.utilization
-            let bindingWindow = isFiveHour ? quota.fiveHour : quota.sevenDay
-            let windowEntries = HistoryStore.readForWindow(
-                resetsAt: bindingWindow.resetsAt,
-                isFiveHour: isFiveHour
-            )
+            // History + trend for both windows
+            let fhEntries = HistoryStore.readForWindow(resetsAt: quota.fiveHour.resetsAt, isFiveHour: true)
+            let sdEntries = HistoryStore.readForWindow(resetsAt: quota.sevenDay.resetsAt, isFiveHour: false)
+            let fhTrend = TrendCalculator.trend(entries: fhEntries, isFiveHour: true)
+            let sdTrend = TrendCalculator.trend(entries: sdEntries, isFiveHour: false)
 
-            let trend = TrendCalculator.trend(entries: windowEntries, isFiveHour: isFiveHour)
+            // Project both windows (rate + trend with guardrails)
+            let fhProjection = projectAtReset(window: quota.fiveHour, windowDuration: PaceCalculator.fiveHourDuration, trend: fhTrend, isFiveHour: true)
+            let sdProjection = projectAtReset(window: quota.sevenDay, windowDuration: PaceCalculator.sevenDayDuration, trend: sdTrend, isFiveHour: false)
 
-            let windowDuration = isFiveHour ? PaceCalculator.fiveHourDuration : PaceCalculator.sevenDayDuration
-            let windowStart = bindingWindow.resetsAt.addingTimeInterval(-windowDuration)
+            // Per-window state (independent coloring)
+            let fhState = ShepherdState.from(window: quota.fiveHour, pace: fiveHourPace, projectedAtReset: fhProjection)
+            let sdState = ShepherdState.from(window: quota.sevenDay, pace: sevenDayPace, projectedAtReset: sdProjection)
+
+            // Icon + notifications = worst window
+            latestState = fhState.severity >= sdState.severity ? fhState : sdState
+
+            // Sparkline for worst window
+            let worstIsFiveHour = fhState.severity >= sdState.severity
+            let worstWindow = worstIsFiveHour ? quota.fiveHour : quota.sevenDay
+            let worstEntries = worstIsFiveHour ? fhEntries : sdEntries
+            let worstDuration = worstIsFiveHour ? PaceCalculator.fiveHourDuration : PaceCalculator.sevenDayDuration
+            let windowStart = worstWindow.resetsAt.addingTimeInterval(-worstDuration)
             let sparklineData = TrendCalculator.sparklineBuckets(
-                entries: windowEntries,
-                isFiveHour: isFiveHour,
+                entries: worstEntries,
+                isFiveHour: worstIsFiveHour,
                 windowStart: windowStart,
                 windowEnd: Date()
             )
-
-            // Compute projected utilization at reset for state derivation
-            // Rate-based = baseline (whole window average). Trend = recent velocity.
-            // Use whichever is higher — more conservative warning.
-            let bindingPace = isFiveHour ? fiveHourPace : sevenDayPace
-            var projectedAtReset: Double? = nil
-            let timeToReset = bindingWindow.resetsAt.timeIntervalSinceNow
-            if timeToReset > 0, bindingWindow.utilization > 0.01 {
-                let elapsed = windowDuration - timeToReset
-                if elapsed > 60 {
-                    let rate = bindingWindow.utilization / elapsed
-                    projectedAtReset = min(rate * windowDuration, 1.0)
-                }
-                if let t = trend, abs(t.velocityPerHour) > 0.001 {
-                    let hoursRemaining = timeToReset / 3600
-                    let trendProjected = max(min(bindingWindow.utilization + (t.velocityPerHour * hoursRemaining), 1.0), bindingWindow.utilization)
-                    projectedAtReset = max(projectedAtReset ?? 0, trendProjected)
-                }
-            }
-
-            // Single state derivation — every surface uses this
-            latestState = ShepherdState.from(
-                window: bindingWindow,
-                pace: bindingPace,
-                projectedAtReset: projectedAtReset
-            )
+            let sparklineElapsed = max(worstDuration - worstWindow.resetsAt.timeIntervalSinceNow, 0)
 
             // Cache for details
             latestQuota = quota
-            latestProjection = projectedAtReset
 
             let heroView = NSHostingView(rootView: BindingView(
                 quota: quota,
-                state: latestState,
-                projectedAtReset: projectedAtReset,
+                fhState: fhState,
+                sdState: sdState,
+                fhProjection: fhProjection,
+                sdProjection: sdProjection,
                 sparklineData: sparklineData,
+                sparklineElapsed: sparklineElapsed,
                 tokenSummary: cachedTokenSummary
             ))
             heroView.frame.size = heroView.fittingSize
@@ -307,6 +285,43 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard let button = statusItem.button else { return }
         button.image = StatusBarIcon.icon(for: latestState)
         button.title = ""
+    }
+
+    // MARK: - Projection
+
+    private func projectAtReset(
+        window: QuotaWindow, windowDuration: TimeInterval,
+        trend: TrendInfo?, isFiveHour: Bool
+    ) -> Double? {
+        let timeToReset = window.resetsAt.timeIntervalSinceNow
+        guard timeToReset > 0, window.utilization > 0.01 else { return nil }
+        var projection: Double? = nil
+        // Rate-based (whole window average)
+        let elapsed = windowDuration - timeToReset
+        if elapsed > 60 {
+            projection = min((window.utilization / elapsed) * windowDuration, 1.0)
+        }
+        // Trend-based: recent velocity, guardrailed.
+        // Trust proportional to evidence.
+        if let t = trend, abs(t.velocityPerHour) > 0.001 {
+            let hoursRemaining = timeToReset / 3600
+            let spanHours = t.spanSeconds / 3600
+            // Proportional cap: 4× for 5h (active session), 1.7× for 7d (includes sleep).
+            let multiplier: Double = isFiveHour ? 4.0 : 1.7
+            let effectiveHours = min(hoursRemaining, spanHours * multiplier)
+            let trendProjected = max(
+                min(window.utilization + (t.velocityPerHour * effectiveHours), 1.0),
+                window.utilization
+            )
+            // Need 15+ min of data to push into red. Short bursts cap at orange.
+            if t.spanSeconds < 900 && trendProjected >= 0.9 {
+                let capped = min(trendProjected, max(projection ?? 0, 0.89))
+                projection = max(projection ?? 0, capped)
+            } else {
+                projection = max(projection ?? 0, trendProjected)
+            }
+        }
+        return projection
     }
 }
 

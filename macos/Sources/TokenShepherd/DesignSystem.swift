@@ -7,6 +7,16 @@ enum ShepherdState {
     case low          // util 90-99%
     case locked       // util ≥ 100%
 
+    var severity: Int {
+        switch self {
+        case .calm:       return 0
+        case .trajectory: return 1
+        case .warm:       return 2
+        case .low:        return 3
+        case .locked:     return 4
+        }
+    }
+
     var color: Color {
         switch self {
         case .calm:                  return .primary

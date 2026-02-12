@@ -77,14 +77,6 @@ struct QuotaData {
     let sevenDaySonnet: QuotaWindow?
     let extraUsage: ExtraUsage
     let fetchedAt: Date
-
-    var bindingWindow: QuotaWindow {
-        fiveHour.utilization >= sevenDay.utilization ? fiveHour : sevenDay
-    }
-
-    var bindingWindowDuration: TimeInterval {
-        fiveHour.utilization >= sevenDay.utilization ? 18_000 : 604_800
-    }
 }
 
 enum QuotaState {
@@ -130,6 +122,7 @@ struct TrendInfo {
     let velocityPerHour: Double  // utilization delta per hour
     let recentDelta: Double      // absolute delta over lookback period
     let lookbackMinutes: Int
+    let spanSeconds: Double      // actual data span (first to last entry)
 }
 
 // MARK: - Window Summary

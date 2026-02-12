@@ -25,7 +25,8 @@ struct TrendCalculator {
         return TrendInfo(
             velocityPerHour: velocityPerHour,
             recentDelta: delta,
-            lookbackMinutes: lookbackMinutes
+            lookbackMinutes: lookbackMinutes,
+            spanSeconds: spanSeconds
         )
     }
 
