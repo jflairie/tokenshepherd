@@ -1,4 +1,4 @@
-# 🐑 TokenShepherd
+# <img src="assets/sheep-calm.png" width="32"> TokenShepherd
 
 I kept getting rate-limited on Claude Code without warning. So I built this.
 
