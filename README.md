@@ -1,4 +1,4 @@
-# TokenShepherd
+# 🐑 TokenShepherd
 
 I kept getting rate-limited on Claude Code without warning. So I built this.
 
