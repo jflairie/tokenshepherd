@@ -4,7 +4,9 @@ I kept getting rate-limited on Claude Code without warning. So I built this.
 
 TokenShepherd sits in your Mac menu bar and watches your Claude Code quota. It projects where you'll be at reset and tells you *before* you hit the limit — not after.
 
-<!-- TODO: screenshot of the popover showing chart + projection -->
+<p align="center">
+  <img src="assets/menu.png" width="400" alt="TokenShepherd menu showing dual-window quota projection">
+</p>
 
 ## The Sheep
 
@@ -21,9 +23,10 @@ If the sheep is calm, you never need to click it.
 
 ## What You See When You Click
 
-- **Projection hero** — the big number answers "will I run out?" It shows where you're heading at reset, not where you are now. Framed as "AT THIS PACE ~85% at reset 5:00 PM".
-- **Activity chart** — your usage pattern over the current window. Hover for details.
-- **Collapsible details** — raw numbers for both quota windows (short/long), pace, and reset times. Collapsed by default.
+- **Pace projections** — the big numbers answer "will I run out?" for both quota windows (5h and 7d), independently colored by severity. Pace leads because it's the actionable signal.
+- **Current utilization** — grounding context below the projections. Where you are now vs. where you're heading.
+- **Reset times** — when each window resets, so you can plan around it.
+- **Collapsible details** — Sonnet 7d utilization and extra usage spend. Hidden when empty. Collapsed by default.
 - **Quick actions** — refresh data, copy status to clipboard, open the Anthropic dashboard.
 
 ## Notifications
