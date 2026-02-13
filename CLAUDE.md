@@ -33,7 +33,7 @@ make clean      # Clean Swift build artifacts
 
 1. **Icon (ambient)** — Sheep only, no text. Calm = plain (template). Orange = trajectory/warm. Red = low. Dead (flipped, 12% opacity) = locked. 80% of the value lives here.
 2. **Notifications (proactive)** — Pace warning, 90% threshold, locked, restored. Each fires once per window cycle.
-3. **Menu (on demand)** — Dual-window hero (both 5h and 7d, independently colored), interactive activity chart, collapsible details (analytics: tokens, lock history), metadata footer.
+3. **Menu (on demand)** — Dual-window table hero (both 5h and 7d, independently colored), collapsible details (Sonnet 7d, extra usage — hidden when empty), metadata footer.
 
 ### File Structure
 ```
@@ -45,12 +45,11 @@ macos/Sources/TokenShepherd/
   APIService.swift        — URLSession GET to Anthropic quota API + token refresh
   QuotaService.swift      — Orchestrator: auth → fetch → history → publish state + 60s timer
   PaceCalculator.swift    — Pace projection, time-to-limit, limitAt formatting
-  TrendCalculator.swift   — Velocity from history, sparkline bucketing
+  TrendCalculator.swift   — Velocity from history (trend-based projection input)
   NotificationService.swift — UNUserNotificationCenter: threshold tracking per window cycle
   HistoryStore.swift      — JSONL append/read/prune + window summaries (WindowSummaryStore)
   StatsCache.swift        — Reads ~/.claude/stats-cache.json for token summary (today/yesterday/7d counts + dominant model)
-  BindingView.swift       — SwiftUI: dual-window hero + chart + analytics details (tokens, lock history)
-  SparklineView.swift     — SwiftUI: interactive chart (bezier area, delta bars, neutral threshold lines, hover info bar)
+  BindingView.swift       — SwiftUI: table-layout hero (Pace/Now/Resets rows × 5h/7d columns) + collapsible details
   StatusBarIcon.swift     — Sheep-only icon: calm/tinted/dead, no suffix text
 ```
 
@@ -64,9 +63,8 @@ KeychainService → OAuthCredentials
     → For BOTH windows: readForWindow() → TrendCalculator → trend → projectAtReset()
     → Per-window ShepherdState.from() → independent coloring
     → Icon/notifications = worst state (by severity)
-    → Sparkline for worst window
-    → BindingView (dual-window hero, activity chart)
-    → DetailsContentView (sonnet, extra usage, tokens, lock history)
+    → BindingView (table hero: Pace/Now/Resets × 5h/7d)
+    → DetailsContentView (sonnet 7d, extra usage — hidden when empty)
     → StatusBarIcon (sheep: calm/tinted/dead based on worst state)
     → NotificationService.evaluate()
 ```
@@ -83,9 +81,9 @@ KeychainService → OAuthCredentials
 | Low | util ≥ 90% OR projected ≥ 90% | `.red` | 3 |
 | Locked | util ≥ 100% | `.red` | 4 |
 
-**Dual-window hero:** Both 5h and 7d windows always visible, each independently colored. Each column shows utilization (big number), pace projection (when ≥ 70% and meaningful), and reset time. When both windows are expired, shows "All clear". Sparkline shows the worst window's activity.
+**Table-layout hero:** Row labels (Pace/Now/Resets) on the left, 5h and 7d columns on the right. Pace row leads — 22pt bold projection numbers, independently colored by per-window state. Now row shows current utilization as grounding context. Resets row shows time. When both windows are expired, shows "All clear". Pace shows em-dash placeholder when projection isn't meaningfully above current (< 5pp) or window is near reset.
 
-**Color hierarchy:** Only the utilization number gets state color. Reset times and labels are `.secondary`/`.tertiary`.
+**Color hierarchy:** Only the pace number gets state color. Everything else is `.secondary`/`.tertiary`.
 
 **Projection calculation:** `projectAtReset()` in main.swift — extracted function, called for both windows. Rate-based (whole window average) as baseline, trend-based (recent velocity) upgrades if higher. Takes the max — more conservative warning. Guardrails: (1) Proportional cap: project at most N× observation span — 4× for 5h, 1.7× for 7d. (2) Minimum evidence for red: 15+ min of data to push above 90%.
 
@@ -109,12 +107,11 @@ No data leaves your machine except the API call to Anthropic.
 
 - **Fuzzy date matching:** API `resetsAt` oscillates by ~1s between fetches. All date comparisons use 60s tolerance.
 - **Sheep-only icon:** No text suffix in menu bar. Sheep emoji flipped via CGContext transform. Calm = `isTemplate: false` (plain emoji). Tinted = `.sourceAtop` blend at 60% alpha for vibrancy. Dead = flipped vertically + 12% alpha.
-- **Dual-window hero:** Both 5h and 7d always visible, side by side. Each column independently colored by its own ShepherdState. No "binding window" concept — the user sees both at a glance. Pace projection shown per column only when ≥ 70% and meaningfully above current (> 5pp). Sparkline for worst window.
+- **Table-layout hero:** Pace/Now/Resets rows × 5h/7d columns. Pace row has the big 22pt numbers (projection at reset). Now row grounds with current utilization. Resets row shows deadline. No "binding window" — both windows visible at a glance, independently colored. Pace shows em-dash when projection isn't meaningful (< 5pp above current, window near reset, expired, or locked).
 - **Worst-window icon:** Icon sheep reflects whichever window has highest severity. `ShepherdState.severity` property (0=calm → 4=locked) determines ordering.
-- **Interactive chart:** Fixed 0-100% y-axis. Delta bars show usage bursts. Neutral dashed threshold lines (`.primary.opacity(0.06)`) — barely visible, don't compete with data. Hover reveals utilization %, time-ago, and delta. Chart height 40px. Hidden when both windows expired or locked.
-- **Collapsible details:** Collapsed by default. Analytics-focused: Sonnet 7d, extra usage, token counts (today/yesterday/7d), lock frequency (7d). No window table — that's the hero now.
+- **Collapsible details:** Collapsed by default. Shows Sonnet 7d utilization and extra usage spend. Toggle hidden entirely when there's no content (static `hasContent` check).
 - **Expired window handling:** Expired column shows "—" / "reset" muted. When both expired, hero shows "All clear / Quota just reset" + model label. Updates naturally when API sends fresh window.
-- **Dead sheep:** Locked column shows "100%" + "LOCKED" + "back at HH:MM" in red. Icon shows inverted sheep at 12% opacity for worst-window locked.
+- **Dead sheep:** Locked column shows "LOCKED" + "back HH:MM" in red, pace shows em-dash. Icon shows inverted sheep at 12% opacity for worst-window locked.
 - **Width:** 280px for all menu content (hero, details toggle, details content). Details padding 24px. Footer at 252px.
 - **No Hardened Runtime, no entitlements:** Ad-hoc signed with plain `codesign --sign -`. Hardened Runtime and sandbox entitlements trigger ghost TCC prompts (Photos, Apple Music, network volume, Desktop) on non-notarized apps. Plain ad-hoc signature is sufficient.
 - **No subprocess spawning:** Token refresh was previously done by spawning `claude --print "hi"`, but macOS attributes child process TCC accesses to the parent. Claude CLI touches protected directories during init → Desktop/Photos/Music prompts blamed on TokenShepherd. Now we just wait — Claude Code refreshes its own token, we re-read the keychain next cycle.
