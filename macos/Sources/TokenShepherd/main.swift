@@ -223,20 +223,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             // Icon + notifications = worst window
             latestState = fhState.severity >= sdState.severity ? fhState : sdState
 
-            // Sparkline for worst window
-            let worstIsFiveHour = fhState.severity >= sdState.severity
-            let worstWindow = worstIsFiveHour ? quota.fiveHour : quota.sevenDay
-            let worstEntries = worstIsFiveHour ? fhEntries : sdEntries
-            let worstDuration = worstIsFiveHour ? PaceCalculator.fiveHourDuration : PaceCalculator.sevenDayDuration
-            let windowStart = worstWindow.resetsAt.addingTimeInterval(-worstDuration)
-            let sparklineData = TrendCalculator.sparklineBuckets(
-                entries: worstEntries,
-                isFiveHour: worstIsFiveHour,
-                windowStart: windowStart,
-                windowEnd: Date()
-            )
-            let sparklineElapsed = max(worstDuration - worstWindow.resetsAt.timeIntervalSinceNow, 0)
-
             // Cache for details
             latestQuota = quota
 
@@ -246,8 +232,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 sdState: sdState,
                 fhProjection: fhProjection,
                 sdProjection: sdProjection,
-                sparklineData: sparklineData,
-                sparklineElapsed: sparklineElapsed,
                 tokenSummary: cachedTokenSummary
             ))
             heroView.frame.size = heroView.fittingSize

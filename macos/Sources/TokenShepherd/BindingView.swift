@@ -6,34 +6,20 @@ struct BindingView: View {
     let sdState: ShepherdState
     let fhProjection: Double?
     let sdProjection: Double?
-    let sparklineData: [Double]
-    let sparklineElapsed: TimeInterval
     let tokenSummary: TokenSummary?
 
     private var fhExpired: Bool { quota.fiveHour.resetsAt.timeIntervalSinceNow <= 0 }
     private var sdExpired: Bool { quota.sevenDay.resetsAt.timeIntervalSinceNow <= 0 }
     private var bothExpired: Bool { fhExpired && sdExpired }
 
-    private var worstState: ShepherdState {
-        fhState.severity >= sdState.severity ? fhState : sdState
-    }
+    private let labelWidth: CGFloat = 44
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 6) {
             if bothExpired {
                 expiredHero
             } else {
-                dualWindowHero
-            }
-
-            if !bothExpired && sparklineHasVariation
-                && !quota.fiveHour.isLocked && !quota.sevenDay.isLocked {
-                SparklineView(
-                    data: sparklineData,
-                    color: worstState.chartColor,
-                    windowDuration: sparklineElapsed,
-                    windowEnd: Date()
-                )
+                heroTable
             }
         }
         .padding(.horizontal, 14)
@@ -56,87 +42,117 @@ struct BindingView: View {
         }
     }
 
-    // MARK: - Dual Window Hero
+    // MARK: - Hero Table
 
     @ViewBuilder
-    private var dualWindowHero: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            modelLabel
+    private var heroTable: some View {
+        modelLabel
 
-            HStack(alignment: .top, spacing: 0) {
-                windowColumn(
-                    label: "5h",
-                    window: quota.fiveHour,
-                    state: fhState,
-                    projection: fhProjection,
-                    expired: fhExpired
-                )
-                windowColumn(
-                    label: "7d",
-                    window: quota.sevenDay,
-                    state: sdState,
-                    projection: sdProjection,
-                    expired: sdExpired
-                )
-            }
+        // Header
+        HStack(spacing: 0) {
+            Text("")
+                .frame(width: labelWidth, alignment: .leading)
+            Text("5h")
+                .font(.system(.caption2, weight: .semibold))
+                .foregroundStyle(.tertiary)
+                .frame(maxWidth: .infinity)
+            Text("7d")
+                .font(.system(.caption2, weight: .semibold))
+                .foregroundStyle(.tertiary)
+                .frame(maxWidth: .infinity)
+        }
+
+        // Pace row (primary signal — "will I be interrupted?")
+        HStack(alignment: .firstTextBaseline, spacing: 0) {
+            Text("Pace")
+                .font(.system(.caption2, weight: .medium))
+                .foregroundStyle(.tertiary)
+                .frame(width: labelWidth, alignment: .leading)
+            paceCell(window: quota.fiveHour, state: fhState, projection: fhProjection, expired: fhExpired)
+                .frame(maxWidth: .infinity)
+            paceCell(window: quota.sevenDay, state: sdState, projection: sdProjection, expired: sdExpired)
+                .frame(maxWidth: .infinity)
+        }
+
+        // Now row (current utilization — grounding context)
+        HStack(alignment: .firstTextBaseline, spacing: 0) {
+            Text("Now")
+                .font(.system(.caption2, weight: .medium))
+                .foregroundStyle(.tertiary)
+                .frame(width: labelWidth, alignment: .leading)
+            nowCell(window: quota.fiveHour, state: fhState, expired: fhExpired)
+                .frame(maxWidth: .infinity)
+            nowCell(window: quota.sevenDay, state: sdState, expired: sdExpired)
+                .frame(maxWidth: .infinity)
+        }
+
+        // Resets row
+        HStack(alignment: .firstTextBaseline, spacing: 0) {
+            Text("Resets")
+                .font(.system(.caption2, weight: .medium))
+                .foregroundStyle(.tertiary)
+                .frame(width: labelWidth, alignment: .leading)
+            resetsCell(window: quota.fiveHour, state: fhState, expired: fhExpired)
+                .frame(maxWidth: .infinity)
+            resetsCell(window: quota.sevenDay, state: sdState, expired: sdExpired)
+                .frame(maxWidth: .infinity)
+        }
+    }
+
+    // MARK: - Cells
+
+    @ViewBuilder
+    private func paceCell(window: QuotaWindow, state: ShepherdState, projection: Double?, expired: Bool) -> some View {
+        if expired || window.isLocked {
+            Text("\u{2014}")
+                .font(.system(size: 22, weight: .bold, design: .rounded))
+                .foregroundStyle(.secondary.opacity(0.3))
+        } else if let proj = projection,
+                  Int(proj * 100) > Int(window.utilization * 100) + 5 {
+            Text("~\(Int(proj * 100))%")
+                .font(.system(size: 22, weight: .bold, design: .rounded))
+                .monospacedDigit()
+                .foregroundStyle(state.color)
+        } else {
+            Text("\u{2014}")
+                .font(.system(size: 22, weight: .bold, design: .rounded))
+                .foregroundStyle(.secondary.opacity(0.3))
         }
     }
 
     @ViewBuilder
-    private func windowColumn(
-        label: String,
-        window: QuotaWindow,
-        state: ShepherdState,
-        projection: Double?,
-        expired: Bool
-    ) -> some View {
-        VStack(spacing: 2) {
-            Text(label)
-                .font(.system(.caption2, weight: .semibold))
-                .foregroundStyle(.tertiary)
-
-            if expired {
-                Text("\u{2014}")
-                    .font(.system(size: 24, weight: .bold, design: .rounded))
-                    .foregroundStyle(.secondary.opacity(0.3))
-                Text("reset")
-                    .font(.system(.caption2))
-                    .foregroundStyle(.secondary.opacity(0.3))
-            } else if window.isLocked {
-                Text("100%")
-                    .font(.system(size: 24, weight: .bold, design: .rounded))
-                    .monospacedDigit()
-                    .foregroundStyle(state.color)
-                Text("LOCKED")
-                    .font(.system(.caption2, weight: .semibold))
-                    .foregroundStyle(state.color)
-                Text("back \(formatTimeShort(window.resetsAt))")
-                    .font(.system(.caption2))
-                    .foregroundStyle(state.color)
-            } else {
-                Text("\(Int(window.utilization * 100))%")
-                    .font(.system(size: 24, weight: .bold, design: .rounded))
-                    .monospacedDigit()
-                    .foregroundStyle(state.color)
-
-                if let proj = projection,
-                   proj >= 0.7,
-                   Int(proj * 100) > Int(window.utilization * 100) + 5 {
-                    Text("~\(Int(proj * 100))% pace")
-                        .font(.system(.caption2, weight: .medium))
-                        .foregroundStyle(projectionColor(proj))
-                } else {
-                    Text("\u{2014}")
-                        .font(.system(.caption2))
-                        .foregroundStyle(.secondary.opacity(0.3))
-                }
-
-                Text("resets \(formatTimeShort(window.resetsAt))")
-                    .font(.system(.caption2))
-                    .foregroundStyle(.secondary)
-            }
+    private func nowCell(window: QuotaWindow, state: ShepherdState, expired: Bool) -> some View {
+        if expired {
+            Text("\u{2014}")
+                .font(.system(.caption))
+                .foregroundStyle(.secondary.opacity(0.3))
+        } else if window.isLocked {
+            Text("LOCKED")
+                .font(.system(.caption, weight: .semibold))
+                .foregroundStyle(state.color)
+        } else {
+            Text("\(Int(window.utilization * 100))%")
+                .font(.system(.caption))
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
         }
-        .frame(maxWidth: .infinity)
+    }
+
+    @ViewBuilder
+    private func resetsCell(window: QuotaWindow, state: ShepherdState, expired: Bool) -> some View {
+        if expired {
+            Text("reset")
+                .font(.system(.caption2))
+                .foregroundStyle(.secondary.opacity(0.3))
+        } else if window.isLocked {
+            Text("back \(formatTimeShort(window.resetsAt))")
+                .font(.system(.caption2))
+                .foregroundStyle(state.color)
+        } else {
+            Text(formatTimeShort(window.resetsAt))
+                .font(.system(.caption2))
+                .foregroundStyle(.secondary)
+        }
     }
 
     // MARK: - Helpers
@@ -154,12 +170,6 @@ struct BindingView: View {
         }
     }
 
-    private func projectionColor(_ projection: Double) -> Color {
-        if projection >= 0.9 { return .red }
-        if projection >= 0.7 { return .orange }
-        return .secondary
-    }
-
     private func formatTimeShort(_ date: Date) -> String {
         let formatter = DateFormatter()
         formatter.locale = Locale.current
@@ -170,13 +180,6 @@ struct BindingView: View {
             formatter.dateFormat = "EEE h a"
         }
         return formatter.string(from: date)
-    }
-
-    private var sparklineHasVariation: Bool {
-        guard sparklineData.count >= 2,
-              let min = sparklineData.min(),
-              let max = sparklineData.max() else { return false }
-        return (max - min) >= 0.02
     }
 }
 
@@ -213,7 +216,6 @@ struct DetailsContentView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            // Sonnet 7d (only when active)
             if let sonnet = quota.sevenDaySonnet, sonnet.utilization > 0 {
                 detailRow(
                     label: "Sonnet 7d",
@@ -222,7 +224,6 @@ struct DetailsContentView: View {
                 )
             }
 
-            // Extra usage
             if quota.extraUsage.isEnabled,
                let used = quota.extraUsage.usedCredits,
                let limit = quota.extraUsage.monthlyLimit {
@@ -233,7 +234,6 @@ struct DetailsContentView: View {
                 )
             }
 
-            // Token counts
             if let summary = tokenSummary, summary.last7Days > 0 {
                 Rectangle()
                     .fill(.quaternary.opacity(0.5))
@@ -261,7 +261,6 @@ struct DetailsContentView: View {
                 )
             }
 
-            // Window history
             let summaries = WindowSummaryStore.read()
             let recentLocks = summaries.filter {
                 $0.wasLocked && $0.closedAt > Date().addingTimeInterval(-7 * 86400)
