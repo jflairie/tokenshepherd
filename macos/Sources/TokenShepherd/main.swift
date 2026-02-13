@@ -150,12 +150,23 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func updateDetailsContent() {
         guard let quota = latestQuota else { return }
-        let detailsView = NSHostingView(rootView: DetailsContentView(
-            quota: quota,
-            tokenSummary: cachedTokenSummary
-        ))
+        let detailsView = NSHostingView(rootView: DetailsContentView(quota: quota))
         detailsView.frame.size = detailsView.fittingSize
         detailsContentItem.view = detailsView
+    }
+
+    private func updateDetailsVisibility() {
+        guard let quota = latestQuota else {
+            detailsToggleItem.isHidden = true
+            detailsContentItem.isHidden = true
+            return
+        }
+        let hasDetails = DetailsContentView.hasContent(quota: quota)
+        detailsToggleItem.isHidden = !hasDetails
+        if !hasDetails {
+            detailsVisible = false
+            detailsContentItem.isHidden = true
+        }
     }
 
     // MARK: - UI Updates
@@ -237,6 +248,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             heroView.frame.size = heroView.fittingSize
             contentItem.view = heroView
 
+            updateDetailsVisibility()
             if detailsVisible {
                 updateDetailsContent()
             }

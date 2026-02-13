@@ -212,7 +212,12 @@ struct DetailsToggleView: View {
 
 struct DetailsContentView: View {
     let quota: QuotaData
-    let tokenSummary: TokenSummary?
+
+    static func hasContent(quota: QuotaData) -> Bool {
+        if let sonnet = quota.sevenDaySonnet, sonnet.utilization > 0 { return true }
+        if quota.extraUsage.isEnabled, quota.extraUsage.usedCredits != nil { return true }
+        return false
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -231,50 +236,6 @@ struct DetailsContentView: View {
                     label: "Extra usage",
                     value: Text(String(format: "$%.0f / $%.0f", used, limit))
                         .foregroundStyle(.secondary)
-                )
-            }
-
-            if let summary = tokenSummary, summary.last7Days > 0 {
-                Rectangle()
-                    .fill(.quaternary.opacity(0.5))
-                    .frame(height: 0.5)
-                    .padding(.vertical, 2)
-
-                if summary.today > 0 {
-                    detailRow(
-                        label: "Today",
-                        value: Text(formatTokenCount(summary.today))
-                            .foregroundStyle(.secondary)
-                    )
-                }
-                if summary.yesterday > 0 {
-                    detailRow(
-                        label: "Yesterday",
-                        value: Text(formatTokenCount(summary.yesterday))
-                            .foregroundStyle(.secondary)
-                    )
-                }
-                detailRow(
-                    label: "Last 7 days",
-                    value: Text(formatTokenCount(summary.last7Days))
-                        .foregroundStyle(.secondary)
-                )
-            }
-
-            let summaries = WindowSummaryStore.read()
-            let recentLocks = summaries.filter {
-                $0.wasLocked && $0.closedAt > Date().addingTimeInterval(-7 * 86400)
-            }
-            if !recentLocks.isEmpty {
-                Rectangle()
-                    .fill(.quaternary.opacity(0.5))
-                    .frame(height: 0.5)
-                    .padding(.vertical, 2)
-
-                detailRow(
-                    label: "Locked (7d)",
-                    value: Text("\(recentLocks.count)\u{00D7}")
-                        .foregroundStyle(.red)
                 )
             }
         }
@@ -298,14 +259,5 @@ struct DetailsContentView: View {
             value
                 .font(.system(.caption))
         }
-    }
-
-    private func formatTokenCount(_ count: Int) -> String {
-        if count >= 1_000_000 {
-            return String(format: "%.1fM tokens", Double(count) / 1_000_000)
-        } else if count >= 1_000 {
-            return String(format: "%.0fK tokens", Double(count) / 1_000)
-        }
-        return "\(count) tokens"
     }
 }
