@@ -118,7 +118,7 @@ struct BindingView: View {
                 .foregroundStyle(.secondary.opacity(0.3))
         } else if let proj = projection,
                   Int(proj * 100) > Int(window.utilization * 100) + 5 {
-            Text("~\(Int(proj * 100))%")
+            Text("\(Int(proj * 100))%")
                 .font(.system(size: 22, weight: .bold, design: .rounded))
                 .monospacedDigit()
                 .foregroundStyle(state.color)
