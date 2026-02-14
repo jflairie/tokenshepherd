@@ -49,8 +49,9 @@ class QuotaService: ObservableObject {
             await MainActor.run {
                 if case .loaded = result {
                     self.state = result
-                } else if case .loaded = self.state {
-                    // Keep showing stale data — more useful than idle/error
+                } else if case .loaded(let stale) = self.state {
+                    // Re-publish stale data to keep footer current
+                    self.state = .loaded(stale)
                 } else if let bootstrap = QuotaService.bootstrapFromHistory() {
                     self.state = .loaded(bootstrap)
                 } else {

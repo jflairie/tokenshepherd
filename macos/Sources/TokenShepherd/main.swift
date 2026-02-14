@@ -54,12 +54,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(footerItem)
 
         // Hidden items for keyboard shortcuts
-        let copyItem = NSMenuItem(title: "Copy", action: #selector(copyStatus), keyEquivalent: "c")
-        copyItem.target = self
-        copyItem.isHidden = true
-        copyItem.allowsKeyEquivalentWhenHidden = true
-        menu.addItem(copyItem)
-
         let refreshItem = NSMenuItem(title: "Refresh", action: #selector(refresh), keyEquivalent: "r")
         refreshItem.target = self
         refreshItem.isHidden = true
@@ -112,20 +106,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func quit() {
         NSApplication.shared.terminate(nil)
-    }
-
-    @objc private func copyStatus() {
-        guard case .loaded(let quota) = quotaService.state else { return }
-        let fh = quota.fiveHour
-        let sd = quota.sevenDay
-        let fhPart = fh.isLocked ? "5h: Locked" : "5h: \(Int(fh.utilization * 100))%"
-        let sdPart = sd.isLocked ? "7d: Locked" : "7d: \(Int(sd.utilization * 100))%"
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString("\(fhPart) | \(sdPart)", forType: .string)
-    }
-
-    @objc private func openDashboard() {
-        NSWorkspace.shared.open(URL(string: "https://claude.ai/settings")!)
     }
 
     // MARK: - Details Toggle
@@ -281,18 +261,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func updateFooter(fetchedAt: Date?) {
-        let footerView = NSHostingView(rootView: ActionsFooterView(
-            onRefresh: { [weak self] in
-                self?.refresh()
-            },
-            onCopy: { [weak self] in
-                self?.copyStatus()
-                self?.statusItem.menu?.cancelTracking()
-            },
-            onDashboard: { [weak self] in
-                self?.openDashboard()
-                self?.statusItem.menu?.cancelTracking()
-            },
+        let footerView = NSHostingView(rootView: FooterView(
+            onRefresh: { [weak self] in self?.refresh() },
             fetchedAt: fetchedAt
         ))
         footerView.frame.size = footerView.fittingSize
@@ -343,69 +313,45 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 }
 
-// MARK: - Actions Footer View
+// MARK: - Footer
 
-struct ActionsFooterView: View {
+struct FooterView: View {
     let onRefresh: () -> Void
-    let onCopy: () -> Void
-    let onDashboard: () -> Void
     let fetchedAt: Date?
+    @State private var isHovered = false
 
     var body: some View {
         HStack(spacing: 6) {
-            FooterIconButton(systemImage: "arrow.clockwise", action: onRefresh)
-            FooterButton(title: "Copy status", action: onCopy)
-            FooterButton(title: "Dashboard \u{2197}", action: onDashboard)
-            Spacer()
+            Image(systemName: "arrow.clockwise")
+                .font(.system(.caption))
+                .foregroundStyle(isHovered ? .primary : .tertiary)
+                .frame(width: 22, height: 22)
+                .background(
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(isHovered ? Color.primary.opacity(0.06) : .clear)
+                )
+                .onHover { isHovered = $0 }
+                .onTapGesture { onRefresh() }
             if let fetchedAt {
-                Text(fetchedAt, style: .relative)
+                Text(fetchStatus(fetchedAt))
                     .font(.system(.caption2))
-                    .foregroundStyle(.quaternary)
-                    .monospacedDigit()
+                    .foregroundStyle(.tertiary)
             }
+            Spacer()
         }
         .frame(width: 252)
         .padding(.horizontal, 14)
         .padding(.vertical, 6)
     }
-}
 
-struct FooterIconButton: View {
-    let systemImage: String
-    let action: () -> Void
-    @State private var isHovered = false
-
-    var body: some View {
-        Image(systemName: systemImage)
-            .font(.system(.caption))
-            .foregroundStyle(isHovered ? .primary : .tertiary)
-            .frame(width: 22, height: 22)
-            .background(
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(isHovered ? Color.primary.opacity(0.06) : .clear)
-            )
-            .onHover { isHovered = $0 }
-            .onTapGesture { action() }
-    }
-}
-
-struct FooterButton: View {
-    let title: String
-    let action: () -> Void
-    @State private var isHovered = false
-
-    var body: some View {
-        Text(title)
-            .font(.system(.caption))
-            .foregroundStyle(isHovered ? .primary : .tertiary)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 3)
-            .background(
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(isHovered ? Color.primary.opacity(0.06) : .clear)
-            )
-            .onHover { isHovered = $0 }
-            .onTapGesture { action() }
+    private func fetchStatus(_ date: Date) -> String {
+        let seconds = Int(Date().timeIntervalSince(date))
+        if seconds < 90 { return "Live" }
+        let minutes = seconds / 60
+        if minutes < 60 { return "\(minutes)m ago" }
+        let hours = minutes / 60
+        if hours < 24 { return "\(hours)h ago" }
+        return "\(hours / 24)d ago"
     }
 }
 
