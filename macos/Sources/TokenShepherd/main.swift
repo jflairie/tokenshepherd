@@ -12,13 +12,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var latestState: ShepherdState = .calm
 
     private var contentItem: NSMenuItem!
-    private var detailsToggleItem: NSMenuItem!
-    private var detailsContentItem: NSMenuItem!
     private var footerItem: NSMenuItem!
-    private var detailsVisible = false
-
-    // Cache for details updates
-    private var latestQuota: QuotaData?
 
     func setupStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -36,15 +30,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // Hero content
         contentItem = NSMenuItem()
         menu.addItem(contentItem)
-
-        // Details toggle (▶ Details)
-        detailsToggleItem = NSMenuItem()
-        menu.addItem(detailsToggleItem)
-
-        // Details content (hidden by default)
-        detailsContentItem = NSMenuItem()
-        detailsContentItem.isHidden = true
-        menu.addItem(detailsContentItem)
 
         menu.addItem(NSMenuItem.separator())
 
@@ -69,7 +54,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusItem.menu = menu
 
         setLoadingState()
-        updateDetailsToggle()
 
         notificationService.requestPermission()
 
@@ -106,47 +90,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func quit() {
         NSApplication.shared.terminate(nil)
-    }
-
-    // MARK: - Details Toggle
-
-    private func toggleDetails() {
-        detailsVisible.toggle()
-        updateDetailsToggle()
-        detailsContentItem.isHidden = !detailsVisible
-        if detailsVisible {
-            updateDetailsContent()
-        }
-    }
-
-    private func updateDetailsToggle() {
-        let toggleView = NSHostingView(rootView: DetailsToggleView(
-            expanded: detailsVisible,
-            onToggle: { [weak self] in self?.toggleDetails() }
-        ))
-        toggleView.frame.size = toggleView.fittingSize
-        detailsToggleItem.view = toggleView
-    }
-
-    private func updateDetailsContent() {
-        guard let quota = latestQuota else { return }
-        let detailsView = NSHostingView(rootView: DetailsContentView(quota: quota))
-        detailsView.frame.size = detailsView.fittingSize
-        detailsContentItem.view = detailsView
-    }
-
-    private func updateDetailsVisibility() {
-        guard let quota = latestQuota else {
-            detailsToggleItem.isHidden = true
-            detailsContentItem.isHidden = true
-            return
-        }
-        let hasDetails = DetailsContentView.hasContent(quota: quota)
-        detailsToggleItem.isHidden = !hasDetails
-        if !hasDetails {
-            detailsVisible = false
-            detailsContentItem.isHidden = true
-        }
     }
 
     // MARK: - UI Updates
@@ -191,8 +134,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             )
             idleView.frame.size = idleView.fittingSize
             contentItem.view = idleView
-            detailsToggleItem.isHidden = true
-            detailsContentItem.isHidden = true
             updateIcon()
             updateFooter(fetchedAt: nil)
 
@@ -236,9 +177,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             // Icon + notifications = worst window
             latestState = fhState.severity >= sdState.severity ? fhState : sdState
 
-            // Cache for details
-            latestQuota = quota
-
             let heroView = NSHostingView(rootView: BindingView(
                 quota: quota,
                 fhState: fhState,
@@ -250,11 +188,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             heroView.frame.size = heroView.fittingSize
             contentItem.view = heroView
 
-            updateDetailsVisibility()
-            if detailsVisible {
-                updateDetailsContent()
-            }
-
             updateIcon()
             updateFooter(fetchedAt: quota.fetchedAt)
         }
@@ -262,7 +195,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func updateFooter(fetchedAt: Date?) {
         let footerView = NSHostingView(rootView: FooterView(
-            onRefresh: { [weak self] in self?.refresh() },
             fetchedAt: fetchedAt
         ))
         footerView.frame.size = footerView.fittingSize
@@ -316,26 +248,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 // MARK: - Footer
 
 struct FooterView: View {
-    let onRefresh: () -> Void
     let fetchedAt: Date?
-    @State private var isHovered = false
 
     var body: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "arrow.clockwise")
-                .font(.system(.caption))
-                .foregroundStyle(isHovered ? .primary : .tertiary)
-                .frame(width: 22, height: 22)
-                .background(
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(isHovered ? Color.primary.opacity(0.06) : .clear)
-                )
-                .onHover { isHovered = $0 }
-                .onTapGesture { onRefresh() }
+        HStack(spacing: 0) {
             if let fetchedAt {
-                Text(fetchStatus(fetchedAt))
-                    .font(.system(.caption2))
-                    .foregroundStyle(.tertiary)
+                Text(syncStatus(fetchedAt))
+                    .font(.system(size: 10))
+                    .foregroundStyle(.quaternary)
             }
             Spacer()
         }
@@ -344,14 +264,14 @@ struct FooterView: View {
         .padding(.vertical, 6)
     }
 
-    private func fetchStatus(_ date: Date) -> String {
+    private func syncStatus(_ date: Date) -> String {
         let seconds = Int(Date().timeIntervalSince(date))
-        if seconds < 90 { return "Live" }
+        if seconds < 90 { return "Synced" }
         let minutes = seconds / 60
-        if minutes < 60 { return "\(minutes)m ago" }
+        if minutes < 60 { return "Synced \(minutes)m ago" }
         let hours = minutes / 60
-        if hours < 24 { return "\(hours)h ago" }
-        return "\(hours / 24)d ago"
+        if hours < 24 { return "Synced \(hours)h ago" }
+        return "Synced \(hours / 24)d ago"
     }
 }
 

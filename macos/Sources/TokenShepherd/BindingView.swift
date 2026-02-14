@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 struct BindingView: View {
     let quota: QuotaData
@@ -61,10 +62,17 @@ struct BindingView: View {
 
         // Pace row (primary signal — "will I be interrupted?")
         HStack(alignment: .firstTextBaseline, spacing: 0) {
-            Text("Pace")
-                .font(.system(.caption2, weight: .medium))
-                .foregroundStyle(.tertiary)
-                .frame(width: labelWidth, alignment: .leading)
+            HStack(spacing: 2) {
+                Text("Pace")
+                    .font(.system(.caption2, weight: .medium))
+                Image(systemName: "questionmark.circle")
+                    .font(.system(size: 8))
+                    .onTapGesture {
+                        NSWorkspace.shared.open(URL(string: "https://github.com/jflairie/tokenshepherd#readme")!)
+                    }
+            }
+            .foregroundStyle(.tertiary)
+            .frame(width: labelWidth, alignment: .leading)
             paceCell(window: quota.fiveHour, state: fhState, projection: fhProjection, expired: fhExpired)
                 .frame(maxWidth: .infinity)
             paceCell(window: quota.sevenDay, state: sdState, projection: sdProjection, expired: sdExpired)
@@ -177,84 +185,5 @@ struct BindingView: View {
             formatter.dateFormat = "EEE h a"
         }
         return formatter.string(from: date)
-    }
-}
-
-// MARK: - Details Toggle
-
-struct DetailsToggleView: View {
-    let expanded: Bool
-    let onToggle: () -> Void
-
-    var body: some View {
-        HStack(spacing: 4) {
-            Image(systemName: expanded ? "chevron.down" : "chevron.right")
-                .font(.system(.caption2, weight: .medium))
-                .foregroundStyle(.tertiary)
-                .frame(width: 10)
-            Text("Details")
-                .font(.system(.caption, weight: .medium))
-                .foregroundStyle(.tertiary)
-            Spacer()
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 6)
-        .frame(width: 280, alignment: .leading)
-        .contentShape(Rectangle())
-        .onTapGesture { onToggle() }
-    }
-}
-
-// MARK: - Details Content (analytics)
-
-struct DetailsContentView: View {
-    let quota: QuotaData
-
-    static func hasContent(quota: QuotaData) -> Bool {
-        if let sonnet = quota.sevenDaySonnet, sonnet.utilization > 0 { return true }
-        if quota.extraUsage.isEnabled, quota.extraUsage.usedCredits != nil { return true }
-        return false
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            if let sonnet = quota.sevenDaySonnet, sonnet.utilization > 0 {
-                detailRow(
-                    label: "Sonnet 7d",
-                    value: Text("\(Int(sonnet.utilization * 100))%")
-                        .foregroundStyle(utilColor(sonnet.utilization))
-                )
-            }
-
-            if quota.extraUsage.isEnabled,
-               let used = quota.extraUsage.usedCredits,
-               let limit = quota.extraUsage.monthlyLimit {
-                detailRow(
-                    label: "Extra usage",
-                    value: Text(String(format: "$%.0f / $%.0f", used, limit))
-                        .foregroundStyle(.secondary)
-                )
-            }
-        }
-        .padding(.horizontal, 24)
-        .padding(.vertical, 6)
-        .frame(width: 280, alignment: .leading)
-    }
-
-    private func utilColor(_ util: Double) -> Color {
-        if util >= 0.9 { return .red }
-        if util >= 0.7 { return .orange }
-        return .secondary
-    }
-
-    private func detailRow<C: View>(label: String, value: C) -> some View {
-        HStack {
-            Text(label)
-                .font(.system(.caption, weight: .medium))
-                .foregroundStyle(.tertiary)
-            Spacer()
-            value
-                .font(.system(.caption))
-        }
     }
 }

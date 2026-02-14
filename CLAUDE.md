@@ -33,7 +33,7 @@ make clean      # Clean Swift build artifacts
 
 1. **Icon (ambient)** — Sheep only, no text. Idle = dimmed (35% opacity). Calm = plain (template). Orange = trajectory/warm. Red = low. Dead (flipped, 12% opacity) = locked. 80% of the value lives here.
 2. **Notifications (proactive)** — Pace warning, 90% threshold, locked, restored. Each fires once per window cycle.
-3. **Menu (on demand)** — Dual-window table hero (both 5h and 7d, independently colored), collapsible details (Sonnet 7d, extra usage — hidden when empty), footer (refresh + fetch status).
+3. **Menu (on demand)** — Dual-window table hero (both 5h and 7d, independently colored), sync status footer.
 
 ### File Structure
 ```
@@ -49,7 +49,7 @@ macos/Sources/TokenShepherd/
   NotificationService.swift — UNUserNotificationCenter: threshold tracking per window cycle
   HistoryStore.swift      — JSONL append/read/prune + window summaries (WindowSummaryStore)
   StatsCache.swift        — Reads ~/.claude/stats-cache.json for token summary (today/yesterday/7d counts + dominant model)
-  BindingView.swift       — SwiftUI: table-layout hero (Pace/Now/Resets rows × 5h/7d columns) + collapsible details
+  BindingView.swift       — SwiftUI: table-layout hero (Pace/Now/Resets rows × 5h/7d columns)
   StatusBarIcon.swift     — Sheep-only icon: idle(dimmed)/calm/tinted/dead, no suffix text
 ```
 
@@ -64,8 +64,7 @@ KeychainService → OAuthCredentials
     → Per-window ShepherdState.from() → independent coloring
     → Icon/notifications = worst state (by severity)
     → BindingView (table hero: Pace/Now/Resets × 5h/7d)
-    → DetailsContentView (sonnet 7d, extra usage — hidden when empty)
-    → StatusBarIcon (sheep: calm/tinted/dead based on worst state)
+    → StatusBarIcon (sheep: idle/calm/tinted/dead based on worst state)
     → NotificationService.evaluate()
 ```
 
@@ -109,12 +108,12 @@ No data leaves your machine except the API call to Anthropic.
 - **Fuzzy date matching:** API `resetsAt` oscillates by ~1s between fetches. All date comparisons use 60s tolerance.
 - **Sheep-only icon:** No text suffix in menu bar. Sheep emoji flipped via CGContext transform. Calm = `isTemplate: false` (plain emoji). Tinted = `.sourceAtop` blend at 60% alpha for vibrancy. Dead = flipped vertically + 12% alpha.
 - **Table-layout hero:** Pace/Now/Resets rows × 5h/7d columns. Pace row has the big 22pt numbers (projection at reset). Now row grounds with current utilization. Resets row shows deadline. No "binding window" — both windows visible at a glance, independently colored. Pace shows em-dash when projection isn't meaningful (< 5pp above current, window near reset, expired, or locked).
-- **Worst-window icon:** Icon sheep reflects whichever window has highest severity. `ShepherdState.severity` property (0=calm → 4=locked) determines ordering.
-- **Collapsible details:** Collapsed by default. Shows Sonnet 7d utilization and extra usage spend. Toggle hidden entirely when there's no content (static `hasContent` check).
-- **Expired window handling:** Expired column shows "—" / "reset" muted. When both expired, hero shows "All clear / Quota just reset" + model label. Updates naturally when API sends fresh window.
+- **Worst-window icon:** Icon sheep reflects whichever window has highest severity. `ShepherdState.severity` property (-1=idle → 4=locked) determines ordering.
+- **Expired window handling:** Expired column shows "—" / "reset" muted. When both expired, hero shows "Standing by" + model label. Updates naturally when API sends fresh window.
+- **Stale data preservation:** When token expires and refresh fails, keep showing last known quota data. On restart, bootstrap from last history entry. Only truly-no-data case (first ever launch + expired token) shows "Waiting for Claude."
 - **Dead sheep:** Locked column shows "LOCKED" + "back HH:MM" in red, pace shows em-dash. Icon shows inverted sheep at 12% opacity for worst-window locked.
-- **Width:** 280px for all menu content (hero, details toggle, details content). Details padding 24px. Footer at 252px.
-- **Footer:** Refresh button + fetch status ("Live" when < 90s, "Xm/Xh/Xd ago" when stale). No copy/dashboard — they don't earn their place. Stale data re-publishes every 60s to keep the status label current.
+- **Width:** 280px for hero content. Footer at 252px.
+- **Footer:** Sync status only ("Synced" when < 90s, "Synced Xm/Xh/Xd ago" when stale). Quaternary styling — metadata, not content. Stale data re-publishes every 60s to keep the label current.
 - **No Hardened Runtime, no entitlements:** Ad-hoc signed with plain `codesign --sign -`. Hardened Runtime and sandbox entitlements trigger ghost TCC prompts (Photos, Apple Music, network volume, Desktop) on non-notarized apps. Plain ad-hoc signature is sufficient.
 - **No subprocess spawning:** Token refresh was previously done by spawning `claude --print "hi"`, but macOS attributes child process TCC accesses to the parent. Claude CLI touches protected directories during init → Desktop/Photos/Music prompts blamed on TokenShepherd. Now we just wait — Claude Code refreshes its own token, we re-read the keychain next cycle.
 - **LaunchAgent via `open -W`:** `open` gives proper macOS app context (avoids TCC issues from direct binary launch). `-W` makes `open` wait for exit, so launchd can track it for `KeepAlive` (auto-restart on crash). Install order: `launchctl unload` → kill → remove → copy → load — must unload first or KeepAlive restarts mid-install.
