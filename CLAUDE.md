@@ -50,7 +50,7 @@ macos/Sources/TokenShepherd/
   HistoryStore.swift      — JSONL append/read/prune + window summaries (WindowSummaryStore)
   StatsCache.swift        — Reads ~/.claude/stats-cache.json for token summary (today/yesterday/7d counts + dominant model)
   BindingView.swift       — SwiftUI: table-layout hero (Pace/Now/Resets rows × 5h/7d columns) + collapsible details
-  StatusBarIcon.swift     — Sheep-only icon: calm/tinted/dead, no suffix text
+  StatusBarIcon.swift     — Sheep-only icon: idle(dimmed)/calm/tinted/dead, no suffix text
 ```
 
 ### Data Flow
@@ -75,13 +75,14 @@ KeychainService → OAuthCredentials
 
 | State | Condition | Color | Severity |
 |---|---|---|---|
+| Idle | window expired | `.primary` (dimmed icon) | -1 |
 | Calm | util < 70%, no trajectory | `.primary` | 0 |
 | Trajectory | projected ≥ 70%, util < 70% | `.orange` | 1 |
 | Warm | util 70-89%, projected < 90% | `.orange` | 2 |
 | Low | util ≥ 90% OR projected ≥ 90% | `.red` | 3 |
 | Locked | util ≥ 100% | `.red` | 4 |
 
-**Table-layout hero:** Row labels (Pace/Now/Resets) on the left, 5h and 7d columns on the right. Pace row leads — 22pt bold projection numbers, independently colored by per-window state. Now row shows current utilization as grounding context. Resets row shows time. When both windows are expired, shows "All clear". Pace shows em-dash placeholder when projection isn't meaningfully above current (< 5pp) or window is near reset.
+**Table-layout hero:** Row labels (Pace/Now/Resets) on the left, 5h and 7d columns on the right. Pace row leads — 22pt bold projection numbers, independently colored by per-window state. Now row shows current utilization as grounding context. Resets row shows time. When both windows are expired, shows "Standing by" (dimmed). Pace shows em-dash placeholder when projection isn't meaningfully above current (< 5pp) or window is near reset.
 
 **Color hierarchy:** Only the pace number gets state color. Everything else is `.secondary`/`.tertiary`.
 

@@ -47,7 +47,15 @@ class QuotaService: ObservableObject {
             guard let self else { return }
             let result = await self.fetchData()
             await MainActor.run {
-                self.state = result
+                if case .loaded = result {
+                    self.state = result
+                } else if case .loaded = self.state {
+                    // Keep showing stale data — more useful than idle/error
+                } else if let bootstrap = QuotaService.bootstrapFromHistory() {
+                    self.state = .loaded(bootstrap)
+                } else {
+                    self.state = result
+                }
                 self.isFetching = false
             }
         }
@@ -79,7 +87,10 @@ class QuotaService: ObservableObject {
                 activeToken = newCreds.accessToken
                 activeCredentials = newCreds
             } catch {
-                return .error("Can't reach Anthropic — will retry")
+                // Token expired and refresh failed — Claude hasn't been used recently.
+                // This is expected idle state, not an error. Claude Code will refresh
+                // its own token when used, and we'll pick it up next cycle.
+                return .idle
             }
         }
         let resolvedCredentials = activeCredentials
@@ -103,6 +114,17 @@ class QuotaService: ObservableObject {
         detectWindowCycle(quotaData: quotaData)
 
         return .loaded(quotaData)
+    }
+
+    private static func bootstrapFromHistory() -> QuotaData? {
+        guard let entry = HistoryStore.lastEntry() else { return nil }
+        return QuotaData(
+            fiveHour: QuotaWindow(utilization: entry.fiveHourUtil, resetsAt: entry.fiveHourResetsAt),
+            sevenDay: QuotaWindow(utilization: entry.sevenDayUtil, resetsAt: entry.sevenDayResetsAt),
+            sevenDaySonnet: nil,
+            extraUsage: ExtraUsage(isEnabled: false, monthlyLimit: nil, usedCredits: nil),
+            fetchedAt: entry.ts
+        )
     }
 
     private func mapResponse(_ api: APIQuotaResponse) -> QuotaData {

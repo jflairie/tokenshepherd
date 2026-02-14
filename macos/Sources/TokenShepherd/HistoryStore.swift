@@ -53,6 +53,16 @@ struct HistoryStore {
         }
     }
 
+    /// Last recorded entry (for bootstrapping on restart).
+    static func lastEntry() -> HistoryEntry? {
+        guard let data = try? String(contentsOf: fileURL, encoding: .utf8),
+              let lastLine = data.split(separator: "\n").last,
+              let lineData = lastLine.data(using: .utf8) else { return nil }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try? decoder.decode(HistoryEntry.self, from: lineData)
+    }
+
     /// Prune entries older than 7 days. Call on startup.
     static func prune() {
         let cutoff = Date().addingTimeInterval(-7 * 86400)

@@ -194,6 +194,28 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             setLoadingState()
             updateFooter(fetchedAt: nil)
 
+        case .idle:
+            latestState = .idle
+            let idleView = NSHostingView(rootView:
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Waiting for Claude")
+                        .font(.system(.body, weight: .medium))
+                        .foregroundStyle(.primary)
+                    Text("Use Claude Code to connect")
+                        .font(.system(.caption))
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .frame(width: 280, alignment: .leading)
+            )
+            idleView.frame.size = idleView.fittingSize
+            contentItem.view = idleView
+            detailsToggleItem.isHidden = true
+            detailsContentItem.isHidden = true
+            updateIcon()
+            updateFooter(fetchedAt: nil)
+
         case .error(let message):
             let errorView = NSHostingView(rootView:
                 VStack(alignment: .leading, spacing: 4) {

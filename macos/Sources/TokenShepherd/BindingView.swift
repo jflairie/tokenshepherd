@@ -32,11 +32,8 @@ struct BindingView: View {
     @ViewBuilder
     private var expiredHero: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("All clear")
+            Text("Standing by")
                 .font(.system(size: 20, weight: .semibold, design: .rounded))
-                .foregroundStyle(.primary)
-            Text("Quota just reset")
-                .font(.system(.caption, weight: .medium))
                 .foregroundStyle(.secondary)
             modelLabel
         }

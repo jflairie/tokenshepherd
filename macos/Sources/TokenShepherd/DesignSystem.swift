@@ -1,6 +1,7 @@
 import SwiftUI
 
 enum ShepherdState {
+    case idle         // window expired — nothing to monitor
     case calm
     case trajectory   // projected ≥ 70%, util < 70%
     case warm         // util 70-89%
@@ -9,6 +10,7 @@ enum ShepherdState {
 
     var severity: Int {
         switch self {
+        case .idle:       return -1
         case .calm:       return 0
         case .trajectory: return 1
         case .warm:       return 2
@@ -19,7 +21,7 @@ enum ShepherdState {
 
     var color: Color {
         switch self {
-        case .calm:                  return .primary
+        case .idle, .calm:           return .primary
         case .trajectory, .warm:     return .orange
         case .low, .locked:          return .red
         }
@@ -27,7 +29,7 @@ enum ShepherdState {
 
     var chartColor: Color {
         switch self {
-        case .calm:                  return .green
+        case .idle, .calm:           return .green
         case .trajectory, .warm:     return .orange
         case .low, .locked:          return .red
         }
@@ -38,8 +40,8 @@ enum ShepherdState {
         pace: PaceInfo?,
         projectedAtReset: Double?
     ) -> ShepherdState {
-        // Window expired — data is stale, treat as calm
-        if window.resetsAt.timeIntervalSinceNow <= 0 { return .calm }
+        // Window expired — nothing to monitor
+        if window.resetsAt.timeIntervalSinceNow <= 0 { return .idle }
 
         if window.isLocked { return .locked }
 

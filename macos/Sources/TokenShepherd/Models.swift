@@ -82,6 +82,7 @@ struct QuotaData {
 enum QuotaState {
     case loading
     case loaded(QuotaData)
+    case idle           // credentials exist but token expired — waiting for Claude
     case error(String)
 }
 

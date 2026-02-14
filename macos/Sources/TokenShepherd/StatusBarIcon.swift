@@ -7,10 +7,20 @@ struct StatusBarIcon {
 
     static func icon(for state: ShepherdState) -> NSImage {
         switch state {
+        case .idle:              return renderIdle()
         case .calm:              return renderCalm()
         case .trajectory, .warm: return renderTinted(.systemOrange)
         case .low:               return renderTinted(.systemRed)
         case .locked:            return renderDead()
+        }
+    }
+
+    private static func renderIdle() -> NSImage {
+        renderSheep { ctx, size in
+            ctx.translateBy(x: size.width, y: 0)
+            ctx.scaleBy(x: -1, y: 1)
+            ctx.setAlpha(0.35)
+            sheepEmoji.draw(at: .zero, withAttributes: attrs)
         }
     }
 
