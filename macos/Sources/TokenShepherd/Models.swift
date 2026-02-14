@@ -12,29 +12,13 @@ struct APIQuotaWindow: Codable {
     }
 }
 
-struct APIExtraUsage: Codable {
-    let isEnabled: Bool
-    let monthlyLimit: Double?
-    let usedCredits: Double?
-
-    enum CodingKeys: String, CodingKey {
-        case isEnabled = "is_enabled"
-        case monthlyLimit = "monthly_limit"
-        case usedCredits = "used_credits"
-    }
-}
-
 struct APIQuotaResponse: Codable {
     let fiveHour: APIQuotaWindow
     let sevenDay: APIQuotaWindow
-    let sevenDaySonnet: APIQuotaWindow?
-    let extraUsage: APIExtraUsage
 
     enum CodingKeys: String, CodingKey {
         case fiveHour = "five_hour"
         case sevenDay = "seven_day"
-        case sevenDaySonnet = "seven_day_sonnet"
-        case extraUsage = "extra_usage"
     }
 }
 
@@ -65,17 +49,9 @@ struct QuotaWindow {
     }
 }
 
-struct ExtraUsage {
-    let isEnabled: Bool
-    let monthlyLimit: Double?
-    let usedCredits: Double?
-}
-
 struct QuotaData {
     let fiveHour: QuotaWindow
     let sevenDay: QuotaWindow
-    let sevenDaySonnet: QuotaWindow?
-    let extraUsage: ExtraUsage
     let fetchedAt: Date
 }
 
@@ -92,8 +68,6 @@ struct OAuthCredentials {
     let accessToken: String
     let refreshToken: String
     let expiresAt: Date
-    let subscriptionType: String?
-    let rateLimitTier: String?
 
     var isExpired: Bool {
         // 5-minute buffer

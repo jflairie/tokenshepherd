@@ -104,23 +104,6 @@ struct WindowSummaryStore {
         .appendingPathComponent(".tokenshepherd")
     private static let fileURL = directoryURL.appendingPathComponent("windows.jsonl")
 
-    static func read() -> [WindowSummary] {
-        guard let data = try? String(contentsOf: fileURL, encoding: .utf8) else {
-            return []
-        }
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        return data.split(separator: "\n").compactMap { line in
-            guard let lineData = line.data(using: .utf8) else { return nil }
-            return try? decoder.decode(WindowSummary.self, from: lineData)
-        }
-    }
-
-    /// Most recent summary for a given window type.
-    static func lastSummary(windowType: String) -> WindowSummary? {
-        read().filter { $0.windowType == windowType }.last
-    }
-
     static func append(_ summary: WindowSummary) {
         do {
             try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)

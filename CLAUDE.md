@@ -118,8 +118,3 @@ No data leaves your machine except the API call to Anthropic.
 - **No subprocess spawning:** Token refresh was previously done by spawning `claude --print "hi"`, but macOS attributes child process TCC accesses to the parent. Claude CLI touches protected directories during init → Desktop/Photos/Music prompts blamed on TokenShepherd. Now we just wait — Claude Code refreshes its own token, we re-read the keychain next cycle.
 - **LaunchAgent via `open -W`:** `open` gives proper macOS app context (avoids TCC issues from direct binary launch). `-W` makes `open` wait for exit, so launchd can track it for `KeepAlive` (auto-restart on crash). Install order: `launchctl unload` → kill → remove → copy → load — must unload first or KeepAlive restarts mid-install.
 - **Keychain via `security` CLI:** `SecItemCopyMatching` (native API) triggers a scary password dialog for items created by other apps. `security find-generic-password` reads silently from the login keychain. Right trade-off for a non-notarized app.
-
-## Key Documents
-
-- `RESEARCH.md` — Product research, market analysis, technical feasibility
-- `PRODUCT_DISCOVERY.md` — Product discovery notes

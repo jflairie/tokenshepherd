@@ -3,7 +3,6 @@ import Combine
 
 class QuotaService: ObservableObject {
     @Published var state: QuotaState = .loading
-    @Published var lastCredentials: OAuthCredentials?
 
     private static let minRefreshInterval: TimeInterval = 30
     private var isFetching = false
@@ -73,20 +72,16 @@ class QuotaService: ObservableObject {
 
         // 2. Refresh token silently if expired
         var activeToken = credentials.accessToken
-        var activeCredentials = credentials
         if credentials.isExpired {
             do {
                 let response = try await APIService.refreshToken(using: credentials.refreshToken)
                 let newCreds = OAuthCredentials(
                     accessToken: response.accessToken,
                     refreshToken: response.refreshToken ?? credentials.refreshToken,
-                    expiresAt: Date().addingTimeInterval(Double(response.expiresIn)),
-                    subscriptionType: credentials.subscriptionType,
-                    rateLimitTier: credentials.rateLimitTier
+                    expiresAt: Date().addingTimeInterval(Double(response.expiresIn))
                 )
                 try KeychainService.writeCredentials(newCreds)
                 activeToken = newCreds.accessToken
-                activeCredentials = newCreds
             } catch {
                 // Token expired and refresh failed — Claude hasn't been used recently.
                 // This is expected idle state, not an error. Claude Code will refresh
@@ -94,9 +89,6 @@ class QuotaService: ObservableObject {
                 return .idle
             }
         }
-        let resolvedCredentials = activeCredentials
-        await MainActor.run { self.lastCredentials = resolvedCredentials }
-
         // 3. Fetch quota from API
         let apiResponse: APIQuotaResponse
         do {
@@ -122,8 +114,6 @@ class QuotaService: ObservableObject {
         return QuotaData(
             fiveHour: QuotaWindow(utilization: entry.fiveHourUtil, resetsAt: entry.fiveHourResetsAt),
             sevenDay: QuotaWindow(utilization: entry.sevenDayUtil, resetsAt: entry.sevenDayResetsAt),
-            sevenDaySonnet: nil,
-            extraUsage: ExtraUsage(isEnabled: false, monthlyLimit: nil, usedCredits: nil),
             fetchedAt: entry.ts
         )
     }
@@ -132,12 +122,6 @@ class QuotaService: ObservableObject {
         QuotaData(
             fiveHour: mapWindow(api.fiveHour),
             sevenDay: mapWindow(api.sevenDay),
-            sevenDaySonnet: api.sevenDaySonnet.map { mapWindow($0) },
-            extraUsage: ExtraUsage(
-                isEnabled: api.extraUsage.isEnabled,
-                monthlyLimit: api.extraUsage.monthlyLimit,
-                usedCredits: api.extraUsage.usedCredits
-            ),
             fetchedAt: Date()
         )
     }

@@ -81,9 +81,7 @@ struct KeychainService {
         return OAuthCredentials(
             accessToken: accessToken,
             refreshToken: refreshToken,
-            expiresAt: expiresAt,
-            subscriptionType: dict["subscriptionType"] as? String,
-            rateLimitTier: dict["rateLimitTier"] as? String
+            expiresAt: expiresAt
         )
     }
 
