@@ -1,5 +1,4 @@
 import SwiftUI
-import AppKit
 
 struct BindingView: View {
     let quota: QuotaData
@@ -13,6 +12,7 @@ struct BindingView: View {
     private var sdExpired: Bool { quota.sevenDay.resetsAt.timeIntervalSinceNow <= 0 }
     private var bothExpired: Bool { fhExpired && sdExpired }
 
+    @State private var showPaceInfo = false
     private let labelWidth: CGFloat = 44
 
     var body: some View {
@@ -67,8 +67,12 @@ struct BindingView: View {
                     .font(.system(.caption2, weight: .medium))
                 Image(systemName: "questionmark.circle")
                     .font(.system(size: 8))
-                    .onTapGesture {
-                        NSWorkspace.shared.open(URL(string: "https://github.com/jflairie/tokenshepherd#readme")!)
+                    .onHover { showPaceInfo = $0 }
+                    .popover(isPresented: $showPaceInfo, arrowEdge: .trailing) {
+                        Text("Projected usage at window reset,\nbased on current rate and trend")
+                            .font(.system(size: 11))
+                            .padding(8)
+                            .fixedSize()
                     }
             }
             .foregroundStyle(.tertiary)
