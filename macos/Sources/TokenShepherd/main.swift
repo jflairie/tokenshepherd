@@ -270,8 +270,8 @@ struct FooterView: View {
         let minutes = seconds / 60
         if minutes < 60 { return "Synced \(minutes)m ago" }
         let hours = minutes / 60
-        if hours < 24 { return "Synced \(hours)h ago" }
-        return "Synced \(hours / 24)d ago"
+        let age = hours < 24 ? "\(hours)h ago" : "\(hours / 24)d ago"
+        return "Synced \(age) — use Claude to refresh"
     }
 }
 
