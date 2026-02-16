@@ -23,11 +23,9 @@ If the sheep is calm, you never need to click it.
 
 ## What You See When You Click
 
-- **Pace projections** — the big numbers answer "will I run out?" for both quota windows (5h and 7d), independently colored by severity. Pace leads because it's the actionable signal.
+- **Pace projections** — the big numbers answer "will I run out?" for both quota windows (5h and 7d), independently colored by severity. Pace leads because it's the actionable signal. >100% means you'll get locked before reset.
 - **Current utilization** — grounding context below the projections. Where you are now vs. where you're heading.
 - **Reset times** — when each window resets, so you can plan around it.
-- **Collapsible details** — Sonnet 7d utilization and extra usage spend. Hidden when empty. Collapsed by default.
-- **Quick actions** — refresh data, copy status to clipboard, open the Anthropic dashboard.
 
 ## Notifications
 
