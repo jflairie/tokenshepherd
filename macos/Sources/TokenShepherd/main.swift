@@ -219,7 +219,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // Rate-based (whole window average)
         let elapsed = windowDuration - timeToReset
         if elapsed > 60 {
-            projection = min((window.utilization / elapsed) * windowDuration, 1.0)
+            projection = (window.utilization / elapsed) * windowDuration
         }
         // Trend-based: recent velocity, guardrailed.
         // Trust proportional to evidence.
@@ -230,7 +230,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let multiplier: Double = isFiveHour ? 4.0 : 1.7
             let effectiveHours = min(hoursRemaining, spanHours * multiplier)
             let trendProjected = max(
-                min(window.utilization + (t.velocityPerHour * effectiveHours), 1.0),
+                window.utilization + (t.velocityPerHour * effectiveHours),
                 window.utilization
             )
             // Need 15+ min of data to push into red. Short bursts cap at orange.
