@@ -122,6 +122,11 @@ struct BindingView: View {
                 .font(.system(size: 22, weight: .bold, design: .rounded))
                 .monospacedDigit()
                 .foregroundStyle(state.color)
+        } else if Int(window.utilization * 100) > 0 {
+            Text("\(Int(window.utilization * 100))%")
+                .font(.system(size: 22, weight: .bold, design: .rounded))
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
         } else {
             Text("\u{2014}")
                 .font(.system(size: 22, weight: .bold, design: .rounded))

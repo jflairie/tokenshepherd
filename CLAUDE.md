@@ -81,9 +81,9 @@ KeychainService → OAuthCredentials
 | Low | util ≥ 90% OR projected ≥ 90% | `.red` | 3 |
 | Locked | util ≥ 100% | `.red` | 4 |
 
-**Table-layout hero:** Row labels (Pace/Now/Resets) on the left, 5h and 7d columns on the right. Pace row leads — 22pt bold projection numbers, independently colored by per-window state. Now row shows current utilization as grounding context. Resets row shows time. When both windows are expired, shows "Standing by" (dimmed). Pace shows em-dash placeholder when projection isn't meaningfully above current (< 5pp) or window is near reset.
+**Table-layout hero:** Row labels (Pace/Now/Resets) on the left, 5h and 7d columns on the right. Pace row leads — 22pt bold projection numbers, independently colored by per-window state. Now row shows current utilization as grounding context. Resets row shows time. When both windows are expired, shows "Standing by" (dimmed). Pace shows: (1) projected % in state color when rising (> 5pp above current), (2) current % in secondary when steady, (3) em-dash when expired, locked, or zero utilization.
 
-**Color hierarchy:** Only the pace number gets state color. Everything else is `.secondary`/`.tertiary`.
+**Color hierarchy:** Rising pace gets state color. Steady pace (current util, no meaningful projection) gets `.secondary`. Everything else is `.secondary`/`.tertiary`.
 
 **Projection calculation:** `projectAtReset()` in main.swift — extracted function, called for both windows. Rate-based (whole window average) as baseline, trend-based (recent velocity) upgrades if higher. Takes the max — more conservative warning. Guardrails: (1) Proportional cap: project at most N× observation span — 4× for 5h, 1.7× for 7d. (2) Minimum evidence for red: 15+ min of data to push above 90%.
 
@@ -107,7 +107,7 @@ No data leaves your machine except the API call to Anthropic.
 
 - **Fuzzy date matching:** API `resetsAt` oscillates by ~1s between fetches. All date comparisons use 60s tolerance.
 - **Sheep-only icon:** No text suffix in menu bar. Sheep emoji flipped via CGContext transform. Calm = `isTemplate: false` (plain emoji). Tinted = `.sourceAtop` blend at 60% alpha for vibrancy. Dead = flipped vertically + 12% alpha.
-- **Table-layout hero:** Pace/Now/Resets rows × 5h/7d columns. Pace row has the big 22pt numbers (projection at reset). Now row grounds with current utilization. Resets row shows deadline. No "binding window" — both windows visible at a glance, independently colored. Pace shows em-dash when projection isn't meaningful (< 5pp above current, window near reset, expired, or locked).
+- **Table-layout hero:** Pace/Now/Resets rows × 5h/7d columns. Pace row has the big 22pt numbers. When projection is rising (> 5pp above current), shows projected % in state color. When steady (utilization > 0% but no meaningful projection), shows current % in secondary. Em-dash only for expired, locked, or zero utilization. Now row grounds with current utilization. Resets row shows deadline. No "binding window" — both windows visible at a glance, independently colored.
 - **Worst-window icon:** Icon sheep reflects whichever window has highest severity. `ShepherdState.severity` property (-1=idle → 4=locked) determines ordering.
 - **Expired window handling:** Expired column shows "—" / "reset" muted. When both expired, hero shows "Standing by" + model label. Updates naturally when API sends fresh window.
 - **Stale data preservation:** When token expires and refresh fails, keep showing last known quota data. On restart, bootstrap from last history entry. Only truly-no-data case (first ever launch + expired token) shows "Waiting for Claude."
