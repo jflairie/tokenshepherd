@@ -116,8 +116,7 @@ struct BindingView: View {
             Text("\u{2014}")
                 .font(.system(size: 22, weight: .bold, design: .rounded))
                 .foregroundStyle(.secondary.opacity(0.3))
-        } else if let proj = projection,
-                  Int(proj * 100) > Int(window.utilization * 100) + 5 {
+        } else if let proj = projection {
             Text("\(Int(proj * 100))%")
                 .font(.system(size: 22, weight: .bold, design: .rounded))
                 .monospacedDigit()
@@ -126,7 +125,7 @@ struct BindingView: View {
             Text("\(Int(window.utilization * 100))%")
                 .font(.system(size: 22, weight: .bold, design: .rounded))
                 .monospacedDigit()
-                .foregroundStyle(.secondary)
+                .foregroundStyle(state.color)
         } else {
             Text("\u{2014}")
                 .font(.system(size: 22, weight: .bold, design: .rounded))

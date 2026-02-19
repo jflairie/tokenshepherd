@@ -81,9 +81,9 @@ KeychainService → OAuthCredentials
 | Low | util ≥ 90% OR projected ≥ 90% | `.red` | 3 |
 | Locked | util ≥ 100% | `.red` | 4 |
 
-**Table-layout hero:** Row labels (Pace/Now/Resets) on the left, 5h and 7d columns on the right. Pace row leads — 22pt bold projection numbers, independently colored by per-window state. Now row shows current utilization as grounding context. Resets row shows time. When both windows are expired, shows "Standing by" (dimmed). Pace shows: (1) projected % in state color when rising (> 5pp above current), (2) current % in secondary when steady, (3) em-dash when expired, locked, or zero utilization.
+**Table-layout hero:** Row labels (Pace/Now/Resets) on the left, 5h and 7d columns on the right. Pace row leads — 22pt bold projection numbers, always colored by per-window state. Now row shows current utilization as grounding context. Resets row shows time. When both windows are expired, shows "Standing by" (dimmed). Pace always shows the number in state color: projected % when available, current util % as fallback, em-dash only when expired, locked, or zero utilization.
 
-**Color hierarchy:** Rising pace gets state color. Steady pace (current util, no meaningful projection) gets `.secondary`. Everything else is `.secondary`/`.tertiary`.
+**Color hierarchy:** Pace number always gets state color (primary when calm, orange when warm/trajectory, red when low). Now/Resets use `.secondary`/`.tertiary`.
 
 **Projection calculation:** `projectAtReset()` in main.swift — extracted function, called for both windows. Rate-based (whole window average) as baseline, trend-based (recent velocity) upgrades if higher. Takes the max — more conservative warning. Guardrails: (1) Proportional cap: project at most N× observation span — 4× for 5h, 1.7× for 7d. (2) Minimum evidence for red: 15+ min of data to push above 90%.
 
