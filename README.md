@@ -27,17 +27,6 @@ If the sheep is calm, you never need to click it.
 - **Current utilization** — grounding context below the projections. Where you are now vs. where you're heading.
 - **Reset times** — when each window resets, so you can plan around it.
 
-## Notifications
-
-Fires once per reset cycle — won't spam you.
-
-| Notification | When |
-|---|---|
-| Pace warning | You're burning through quota fast |
-| Running low | Usage hits 90% |
-| Locked | You've been rate-limited |
-| Restored | Limit lifted, you're back |
-
 ## Install
 
 Requires **macOS 14+**, **Xcode Command Line Tools**, and **Claude Code logged in**.

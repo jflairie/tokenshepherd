@@ -5,7 +5,7 @@ import Combine
 class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem!
     private let quotaService = QuotaService()
-    private let notificationService = NotificationService()
+
     private var cancellables = Set<AnyCancellable>()
     private var cachedTokenSummary: TokenSummary?
     private var statsCacheTimer: Timer?
@@ -55,13 +55,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         setLoadingState()
 
-        notificationService.requestPermission()
-
         quotaService.$state
             .receive(on: DispatchQueue.main)
             .sink { [weak self] state in
                 self?.updateUI(state)
-                self?.notificationService.evaluate(state: state)
             }
             .store(in: &cancellables)
 
@@ -174,7 +171,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let fhState = ShepherdState.from(window: quota.fiveHour, pace: fiveHourPace, projectedAtReset: fhProjection)
             let sdState = ShepherdState.from(window: quota.sevenDay, pace: sevenDayPace, projectedAtReset: sdProjection)
 
-            // Icon + notifications = worst window
+            // Icon = worst window
             latestState = fhState.severity >= sdState.severity ? fhState : sdState
 
             let heroView = NSHostingView(rootView: BindingView(

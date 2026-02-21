@@ -29,11 +29,10 @@ make clean      # Clean Swift build artifacts
 
 ## Architecture
 
-### Three Surfaces
+### Two Surfaces
 
 1. **Icon (ambient)** — Sheep only, no text. Idle = dimmed (35% opacity). Calm = plain (template). Orange = trajectory/warm. Red = low. Dead (flipped, 12% opacity) = locked. 80% of the value lives here.
-2. **Notifications (proactive)** — Pace warning, 90% threshold, locked, restored. Each fires once per window cycle.
-3. **Menu (on demand)** — Dual-window table hero (both 5h and 7d, independently colored), sync status footer.
+2. **Menu (on demand)** — Dual-window table hero (both 5h and 7d, independently colored), sync status footer.
 
 ### File Structure
 ```
@@ -46,7 +45,6 @@ macos/Sources/TokenShepherd/
   QuotaService.swift      — Orchestrator: auth → fetch → history → publish state + 60s timer
   PaceCalculator.swift    — Pace projection, time-to-limit, limitAt formatting
   TrendCalculator.swift   — Velocity from history (trend-based projection input)
-  NotificationService.swift — UNUserNotificationCenter: threshold tracking per window cycle
   HistoryStore.swift      — JSONL append/read/prune + window summaries (WindowSummaryStore)
   StatsCache.swift        — Reads ~/.claude/stats-cache.json for token summary (today/yesterday/7d counts + dominant model)
   BindingView.swift       — SwiftUI: table-layout hero (Pace/Now/Resets rows × 5h/7d columns)
@@ -62,10 +60,9 @@ KeychainService → OAuthCredentials
     → HistoryStore.append() → ~/.tokenshepherd/history.jsonl
     → For BOTH windows: readForWindow() → TrendCalculator → trend → projectAtReset()
     → Per-window ShepherdState.from() → independent coloring
-    → Icon/notifications = worst state (by severity)
+    → Icon = worst state (by severity)
     → BindingView (table hero: Pace/Now/Resets × 5h/7d)
     → StatusBarIcon (sheep: idle/calm/tinted/dead based on worst state)
-    → NotificationService.evaluate()
 ```
 
 ### ShepherdState — Per-Window, Independent Color
@@ -86,14 +83,6 @@ KeychainService → OAuthCredentials
 **Color hierarchy:** Pace number always gets state color (primary when calm, orange when warm/trajectory, red when low). Now/Resets use `.secondary`/`.tertiary`.
 
 **Projection calculation:** `projectAtReset()` in main.swift — extracted function, called for both windows. Rate-based (whole window average) as baseline, trend-based (recent velocity) upgrades if higher. Takes the max — more conservative warning. Guardrails: (1) Proportional cap: project at most N× observation span — 4× for 5h, 1.7× for 7d. (2) Minimum evidence for red: 15+ min of data to push above 90%.
-
-### Notification Thresholds
-| Trigger | Condition | Fires once per |
-|---|---|---|
-| Pace warning | `showWarning` true AND util > 50% | window cycle (resetsAt) |
-| Running low | Utilization >= 90% | window cycle |
-| Locked | Utilization >= 100% | window cycle |
-| Restored | Previously locked → unlocked | cycle transition |
 
 ### Local Storage
 
