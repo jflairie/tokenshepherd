@@ -29,7 +29,18 @@ If the sheep is calm, you never need to click it.
 
 ## Install
 
-Requires **macOS 14+**, **Xcode Command Line Tools**, and **Claude Code logged in**.
+Requires **macOS 14+** and **Claude Code** (you can install TokenShepherd first — it'll wait until you log in).
+
+1. Download `TokenShepherd.zip` from the [latest release](https://github.com/jflairie/tokenshepherd/releases/latest)
+2. Unzip and drag `TokenShepherd.app` to `/Applications`
+3. Open it — macOS will block it the first time. Go to **System Settings > Privacy & Security** and click **Open Anyway**
+
+The sheep appears in your menu bar. Done.
+
+<details>
+<summary>Build from source</summary>
+
+Requires Xcode Command Line Tools.
 
 ```bash
 git clone https://github.com/jflairie/tokenshepherd
@@ -39,23 +50,30 @@ make install
 
 Builds, signs, installs to `/Applications`, and starts automatically on login.
 
-First launch: you may need to allow it in **System Settings > Privacy & Security**.
+</details>
 
 ## Uninstall
+
+Drag `TokenShepherd.app` from `/Applications` to the Trash.
+
+<details>
+<summary>If you installed from source</summary>
 
 ```bash
 make uninstall
 ```
 
-Removes from `/Applications` and disables auto-start.
+Also removes the LaunchAgent (auto-start on login).
+
+</details>
 
 ## Troubleshooting
 
 | Problem | Fix |
 |---|---|
-| "No credentials" | Log in to Claude Code first (`claude` in terminal) |
-| Sheep stays calm/grey | Working as intended — or check that Claude Code is logged in |
-| macOS security prompt | Allow in System Settings > Privacy & Security |
+| macOS blocks the app | System Settings > Privacy & Security > Open Anyway |
+| "Waiting for Claude" | Log in to Claude Code first (`claude` in terminal) — TokenShepherd picks it up automatically |
+| Sheep stays calm | Working as intended — calm means your quota is fine |
 
 ## Privacy
 
