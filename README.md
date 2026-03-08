@@ -39,7 +39,7 @@ Requires **macOS 14+** and **Claude Code** (you can install TokenShepherd first 
   <img src="assets/security-setting.png" width="500" alt="macOS Privacy & Security showing Open Anyway button for TokenShepherd">
 </p>
 
-The sheep appears in your menu bar. Done.
+The sheep appears in your menu bar. It starts automatically on login — no extra setup needed.
 
 <details>
 <summary>Build from source</summary>
@@ -78,6 +78,7 @@ Also removes the LaunchAgent (auto-start on login).
 | macOS blocks the app | System Settings > Privacy & Security > Open Anyway |
 | "Waiting for Claude" | Log in to Claude Code first (`claude` in terminal) — TokenShepherd picks it up automatically |
 | Sheep stays calm | Working as intended — calm means your quota is fine |
+| Doesn't start on login | Check System Settings > General > Login Items — TokenShepherd should be listed |
 
 ## Privacy
 

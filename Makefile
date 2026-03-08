@@ -22,9 +22,10 @@ run: build bundle
 
 # Create .app bundle from built binary
 bundle:
-	mkdir -p "$(APP_BUNDLE)/Contents/MacOS"
+	mkdir -p "$(APP_BUNDLE)/Contents/MacOS" "$(APP_BUNDLE)/Contents/Resources"
 	cp "$(BINARY)" "$(APP_BUNDLE)/Contents/MacOS/$(APP_NAME)"
 	cp macos/Resources/Info.plist "$(APP_BUNDLE)/Contents/Info.plist"
+	cp macos/Resources/AppIcon.icns "$(APP_BUNDLE)/Contents/Resources/AppIcon.icns"
 	codesign --force --deep --sign - "$(APP_BUNDLE)"
 
 # Install to /Applications + auto-launch on login
@@ -49,9 +50,10 @@ uninstall:
 
 # Create distributable .app bundle (release build)
 dist: release
-	mkdir -p "$(APP_BUNDLE)/Contents/MacOS"
+	mkdir -p "$(APP_BUNDLE)/Contents/MacOS" "$(APP_BUNDLE)/Contents/Resources"
 	cp "$(BINARY_RELEASE)" "$(APP_BUNDLE)/Contents/MacOS/$(APP_NAME)"
 	cp macos/Resources/Info.plist "$(APP_BUNDLE)/Contents/Info.plist"
+	cp macos/Resources/AppIcon.icns "$(APP_BUNDLE)/Contents/Resources/AppIcon.icns"
 	codesign --force --deep --sign - "$(APP_BUNDLE)"
 	cd macos/.build && zip -r $(APP_NAME).zip $(APP_NAME).app
 	@echo "Built: macos/.build/$(APP_NAME).zip"

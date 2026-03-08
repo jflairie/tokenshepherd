@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import Combine
+import ServiceManagement
 
 class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem!
@@ -13,6 +14,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private var contentItem: NSMenuItem!
     private var footerItem: NSMenuItem!
+
+    func registerLoginItem() {
+        let service = SMAppService.mainApp
+        if service.status != .enabled {
+            do {
+                try service.register()
+                NSLog("[TokenShepherd] Registered as login item")
+            } catch {
+                NSLog("[TokenShepherd] Failed to register as login item: \(error)")
+            }
+        }
+    }
 
     func setupStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -278,6 +291,7 @@ app.setActivationPolicy(.accessory)
 let delegate = AppDelegate()
 app.delegate = delegate
 
+delegate.registerLoginItem()
 delegate.setupStatusItem()
 
 app.run()
