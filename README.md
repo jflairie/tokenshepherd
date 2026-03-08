@@ -35,6 +35,10 @@ Requires **macOS 14+** and **Claude Code** (you can install TokenShepherd first 
 2. Unzip and drag `TokenShepherd.app` to `/Applications`
 3. Open it — macOS will block it the first time. Go to **System Settings > Privacy & Security** and click **Open Anyway**
 
+<p align="center">
+  <img src="assets/security-setting.png" width="500" alt="macOS Privacy & Security showing Open Anyway button for TokenShepherd">
+</p>
+
 The sheep appears in your menu bar. Done.
 
 <details>
