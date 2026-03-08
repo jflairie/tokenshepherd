@@ -48,8 +48,22 @@ struct StatusBarIcon {
         renderSheep { ctx, size in
             ctx.translateBy(x: size.width, y: size.height)
             ctx.scaleBy(x: -1, y: -1)
-            ctx.setAlpha(0.12)
+            ctx.setAlpha(0.5)
             sheepEmoji.draw(at: .zero, withAttributes: attrs)
+
+            ctx.restoreGState()
+            ctx.saveGState()
+
+            let stroke: CGFloat = 2.0
+            let inset: CGFloat = 3.0
+            ctx.setStrokeColor(NSColor.systemRed.cgColor)
+            ctx.setLineWidth(stroke)
+            ctx.setLineCap(.round)
+            ctx.move(to: CGPoint(x: inset, y: inset))
+            ctx.addLine(to: CGPoint(x: size.width - inset, y: size.height - inset))
+            ctx.move(to: CGPoint(x: size.width - inset, y: inset))
+            ctx.addLine(to: CGPoint(x: inset, y: size.height - inset))
+            ctx.strokePath()
         }
     }
 

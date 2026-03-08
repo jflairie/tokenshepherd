@@ -2,7 +2,7 @@
 
 ## Two Surfaces
 
-1. **Icon (ambient)** — Sheep only, no text. Idle = dimmed (35% opacity). Calm = plain (template). Orange = trajectory/warm. Red = low. Dead (flipped, 12% opacity) = locked. 80% of the value lives here.
+1. **Icon (ambient)** — Sheep only, no text. Idle = dimmed (35% opacity). Calm = plain (template). Orange = trajectory/warm. Red = low. Dead (flipped, 50% opacity, red cross overlay) = locked. 80% of the value lives here.
 2. **Menu (on demand)** — Dual-window table hero (both 5h and 7d, independently colored), sync status footer.
 
 ## File Structure
@@ -78,11 +78,11 @@ No data leaves your machine except the API call to Anthropic.
 ## Design Decisions
 
 - **Fuzzy date matching:** API `resetsAt` oscillates by ~1s between fetches. All date comparisons use 60s tolerance.
-- **Sheep-only icon:** No text suffix in menu bar. Sheep emoji flipped via CGContext transform. Calm = `isTemplate: false` (plain emoji). Tinted = `.sourceAtop` blend at 60% alpha for vibrancy. Dead = flipped vertically + 12% alpha.
+- **Sheep-only icon:** No text suffix in menu bar. Sheep emoji flipped via CGContext transform. Calm = `isTemplate: false` (plain emoji). Tinted = `.sourceAtop` blend at 60% alpha for vibrancy. Dead = flipped vertically + 50% alpha + red cross overlay.
 - **Worst-window icon:** Icon sheep reflects whichever window has highest severity. `ShepherdState.severity` property (-1=idle → 4=locked) determines ordering.
 - **Expired window handling:** Expired column shows "—" / "reset" muted. When both expired, hero shows "Standing by" + model label. Updates naturally when API sends fresh window.
 - **Stale data preservation:** When token expires and refresh fails, keep showing last known quota data. On restart, bootstrap from last history entry. Only truly-no-data case (first ever launch + expired token) shows "Waiting for Claude."
-- **Dead sheep:** Locked column shows "LOCKED" + "back HH:MM" in red, pace shows em-dash. Icon shows inverted sheep at 12% opacity for worst-window locked.
+- **Dead sheep:** Locked column shows "LOCKED" + "back HH:MM" in red, pace shows em-dash. Icon shows inverted sheep at 50% opacity with red cross overlay for worst-window locked.
 - **Width:** 280px for hero content. Footer at 252px.
 - **Footer:** Sync status only ("Synced" when < 90s, "Synced Xm/Xh/Xd ago" when stale). Quaternary styling — metadata, not content. Stale data re-publishes every 60s to keep the label current.
 - **No Hardened Runtime, no entitlements:** Ad-hoc signed with plain `codesign --sign -`. Hardened Runtime and sandbox entitlements trigger ghost TCC prompts (Photos, Apple Music, network volume, Desktop) on non-notarized apps. Plain ad-hoc signature is sufficient.
