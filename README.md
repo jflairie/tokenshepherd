@@ -60,7 +60,8 @@ Builds, signs, installs to `/Applications`, and starts automatically on login.
 
 1. Download `TokenShepherd.zip` from the [latest release](https://github.com/jflairie/tokenshepherd/releases/latest)
 2. Unzip and drag `TokenShepherd.app` to `/Applications` — click **Replace** when prompted
-3. The app restarts automatically with the new version
+3. Right-click `TokenShepherd.app` in `/Applications` → **Open** → click **Open** in the dialog
+4. The app starts automatically on login from now on
 
 Your data (`~/.tokenshepherd/`) is preserved across updates.
 
