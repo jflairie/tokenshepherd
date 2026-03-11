@@ -33,13 +33,17 @@ Requires **macOS 14+** and **Claude Code** (you can install TokenShepherd first 
 
 1. Download `TokenShepherd.zip` from the [latest release](https://github.com/jflairie/tokenshepherd/releases/latest)
 2. Unzip and drag `TokenShepherd.app` to `/Applications`
-3. Open it — macOS will block it the first time. Go to **System Settings > Privacy & Security** and click **Open Anyway**
+3. Double-click to open — macOS will block it:
+   - Click **Done** (not "Move to Bin")
+   - Open **System Settings > Privacy & Security**
+   - Scroll down — click **Open Anyway** next to the TokenShepherd message
+   - Enter your password, then click **Open** in the final dialog
 
 <p align="center">
   <img src="assets/security-setting.png" width="500" alt="macOS Privacy & Security showing Open Anyway button for TokenShepherd">
 </p>
 
-The sheep appears in your menu bar. It starts automatically on login — no extra setup needed.
+The sheep appears in your menu bar. It starts automatically on login — no extra setup needed. You only need to do step 3 once per download.
 
 <details>
 <summary>Build from source</summary>
@@ -60,10 +64,9 @@ Builds, signs, installs to `/Applications`, and starts automatically on login.
 
 1. Download `TokenShepherd.zip` from the [latest release](https://github.com/jflairie/tokenshepherd/releases/latest)
 2. Unzip and drag `TokenShepherd.app` to `/Applications` — click **Replace** when prompted
-3. Right-click `TokenShepherd.app` in `/Applications` → **Open** → click **Open** in the dialog
-4. The app starts automatically on login from now on
+3. macOS will block it again (new download = new security check). Same process as install step 3 above.
 
-Your data (`~/.tokenshepherd/`) is preserved across updates.
+Your data is preserved across updates.
 
 ## Uninstall
 
