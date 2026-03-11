@@ -27,6 +27,17 @@ struct TokenResponse: Codable {
 }
 
 struct APIService {
+    private struct QuotaEndpoint {
+        let url: String
+        let betaHeader: String?
+    }
+
+    // Primary first, fallback second. Anthropic has moved this endpoint before.
+    private static let quotaEndpoints = [
+        QuotaEndpoint(url: "https://api.anthropic.com/api/oauth/usage", betaHeader: "oauth-2025-04-20"),
+        QuotaEndpoint(url: "https://platform.claude.com/api/oauth/usage", betaHeader: nil),
+    ]
+
     static func refreshToken(using refreshToken: String) async throws -> TokenResponse {
         var request = URLRequest(url: URL(string: "https://platform.claude.com/v1/oauth/token")!)
         request.httpMethod = "POST"
@@ -61,29 +72,47 @@ struct APIService {
     }
 
     static func fetchQuota(accessToken: String) async throws -> APIQuotaResponse {
-        var request = URLRequest(url: URL(string: "https://api.anthropic.com/api/oauth/usage")!)
-        request.httpMethod = "GET"
-        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-        request.setValue("oauth-2025-04-20", forHTTPHeaderField: "anthropic-beta")
-        request.setValue("tokenshepherd/0.1.0", forHTTPHeaderField: "User-Agent")
+        var lastError: Error = APIError.networkError("No endpoints configured")
 
-        let (data, response): (Data, URLResponse)
-        do {
-            (data, response) = try await URLSession.shared.data(for: request)
-        } catch {
-            throw APIError.networkError(error.localizedDescription)
+        for endpoint in quotaEndpoints {
+            var request = URLRequest(url: URL(string: endpoint.url)!)
+            request.httpMethod = "GET"
+            request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+            if let beta = endpoint.betaHeader {
+                request.setValue(beta, forHTTPHeaderField: "anthropic-beta")
+            }
+            request.setValue("tokenshepherd/0.1.0", forHTTPHeaderField: "User-Agent")
+
+            let data: Data
+            let response: URLResponse
+            do {
+                (data, response) = try await URLSession.shared.data(for: request)
+            } catch {
+                lastError = APIError.networkError(error.localizedDescription)
+                continue
+            }
+
+            guard let httpResponse = response as? HTTPURLResponse else {
+                lastError = APIError.networkError("Invalid response")
+                continue
+            }
+
+            // 401/429 = endpoint broken, try next
+            if httpResponse.statusCode == 401 || httpResponse.statusCode == 429 {
+                let body = String(data: data, encoding: .utf8) ?? ""
+                NSLog("[TokenShepherd] Endpoint %@ returned %d, trying fallback: %@", endpoint.url, httpResponse.statusCode, body)
+                lastError = APIError.httpError(httpResponse.statusCode, body)
+                continue
+            }
+
+            guard httpResponse.statusCode == 200 else {
+                let body = String(data: data, encoding: .utf8) ?? "Unknown error"
+                throw APIError.httpError(httpResponse.statusCode, body)
+            }
+
+            return try JSONDecoder().decode(APIQuotaResponse.self, from: data)
         }
 
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw APIError.networkError("Invalid response")
-        }
-
-        guard httpResponse.statusCode == 200 else {
-            let body = String(data: data, encoding: .utf8) ?? "Unknown error"
-            throw APIError.httpError(httpResponse.statusCode, body)
-        }
-
-        let decoder = JSONDecoder()
-        return try decoder.decode(APIQuotaResponse.self, from: data)
+        throw lastError
     }
 }
