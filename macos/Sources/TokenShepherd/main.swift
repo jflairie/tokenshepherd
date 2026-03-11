@@ -170,15 +170,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let fiveHourPace = PaceCalculator.pace(for: quota.fiveHour, windowDuration: PaceCalculator.fiveHourDuration)
             let sevenDayPace = PaceCalculator.pace(for: quota.sevenDay, windowDuration: PaceCalculator.sevenDayDuration)
 
-            // History + trend for both windows
+            // 5h: rate + trend (session-level, recent velocity matters)
             let fhEntries = HistoryStore.readForWindow(resetsAt: quota.fiveHour.resetsAt, isFiveHour: true)
-            let sdEntries = HistoryStore.readForWindow(resetsAt: quota.sevenDay.resetsAt, isFiveHour: false)
             let fhTrend = TrendCalculator.trend(entries: fhEntries, isFiveHour: true)
-            let sdTrend = TrendCalculator.trend(entries: sdEntries, isFiveHour: false)
+            let fhProjection = projectAtReset(window: quota.fiveHour, windowDuration: PaceCalculator.fiveHourDuration, trend: fhTrend)
 
-            // Project both windows (rate + trend with guardrails)
-            let fhProjection = projectAtReset(window: quota.fiveHour, windowDuration: PaceCalculator.fiveHourDuration, trend: fhTrend, isFiveHour: true)
-            let sdProjection = projectAtReset(window: quota.sevenDay, windowDuration: PaceCalculator.sevenDayDuration, trend: sdTrend, isFiveHour: false)
+            // 7d: hourly usage profile (time-of-day aware), rate-based fallback
+            let sdProjection = projectSevenDay(window: quota.sevenDay)
 
             // Per-window state (independent coloring)
             let fhState = ShepherdState.from(window: quota.fiveHour, pace: fiveHourPace, projectedAtReset: fhProjection)
@@ -217,11 +215,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         button.title = ""
     }
 
-    // MARK: - Projection
+    // MARK: - Projection (5h)
 
+    /// 5h window: rate-based + recent trend. Session-level, reactive.
     private func projectAtReset(
         window: QuotaWindow, windowDuration: TimeInterval,
-        trend: TrendInfo?, isFiveHour: Bool
+        trend: TrendInfo?
     ) -> Double? {
         let timeToReset = window.resetsAt.timeIntervalSinceNow
         guard timeToReset > 0, window.utilization > 0.01 else { return nil }
@@ -231,19 +230,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if elapsed > 60 {
             projection = (window.utilization / elapsed) * windowDuration
         }
-        // Trend-based: recent velocity, guardrailed.
-        // Trust proportional to evidence.
+        // Trend-based: recent velocity, guardrailed
         if let t = trend, abs(t.velocityPerHour) > 0.001 {
             let hoursRemaining = timeToReset / 3600
             let spanHours = t.spanSeconds / 3600
-            // Proportional cap: 4× for 5h (active session), 1.7× for 7d (includes sleep).
-            let multiplier: Double = isFiveHour ? 4.0 : 1.7
-            let effectiveHours = min(hoursRemaining, spanHours * multiplier)
+            let effectiveHours = min(hoursRemaining, spanHours * 4.0)
             let trendProjected = max(
                 window.utilization + (t.velocityPerHour * effectiveHours),
                 window.utilization
             )
-            // Need 15+ min of data to push into red. Short bursts cap at orange.
             if t.spanSeconds < 900 && trendProjected >= 0.9 {
                 let capped = min(trendProjected, max(projection ?? 0, 0.89))
                 projection = max(projection ?? 0, capped)
@@ -252,6 +247,29 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
         }
         return projection
+    }
+
+    // MARK: - Projection (7d)
+
+    /// 7d window: hourly usage profile (time-of-day aware).
+    /// Falls back to rate-based if insufficient history for a profile.
+    private func projectSevenDay(window: QuotaWindow) -> Double? {
+        let timeToReset = window.resetsAt.timeIntervalSinceNow
+        guard timeToReset > 0, window.utilization > 0.01 else { return nil }
+
+        // Profile-based: project using historical consumption by hour-of-day
+        if let profileProjection = UsageProfiler.projectAtReset(
+            currentUtil: window.utilization,
+            resetsAt: window.resetsAt,
+            isFiveHour: false
+        ) {
+            return profileProjection
+        }
+
+        // Fallback: rate-based (whole window average) when history is thin
+        let elapsed = PaceCalculator.sevenDayDuration - timeToReset
+        guard elapsed > 60 else { return nil }
+        return (window.utilization / elapsed) * PaceCalculator.sevenDayDuration
     }
 }
 
@@ -262,6 +280,11 @@ struct FooterView: View {
 
     var body: some View {
         HStack(spacing: 0) {
+            #if DEBUG
+            Text("dev · ")
+                .font(.system(size: 10))
+                .foregroundStyle(.quaternary)
+            #endif
             if let fetchedAt {
                 Text(syncStatus(fetchedAt))
                     .font(.system(size: 10))
