@@ -69,7 +69,7 @@ struct BindingView: View {
                     .font(.system(size: 8))
                     .onHover { showPaceInfo = $0 }
                     .popover(isPresented: $showPaceInfo, arrowEdge: .trailing) {
-                        Text("Projected usage at window reset,\nbased on current rate and trend")
+                        Text("Projected usage at window reset")
                             .font(.system(size: 11))
                             .padding(8)
                             .fixedSize()

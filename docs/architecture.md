@@ -16,7 +16,8 @@ macos/Sources/TokenShepherd/
   APIService.swift        — URLSession GET to Anthropic quota API + token refresh
   QuotaService.swift      — Orchestrator: auth → fetch → history → publish state + 60s timer
   PaceCalculator.swift    — Pace projection, time-to-limit, limitAt formatting
-  TrendCalculator.swift   — Velocity from history (trend-based projection input)
+  TrendCalculator.swift   — Velocity from history (5h trend-based projection input)
+  UsageProfiler.swift     — Hourly consumption profile from history (7d time-of-day aware projection)
   HistoryStore.swift      — JSONL append/read/prune + window summaries (WindowSummaryStore)
   StatsCache.swift        — Reads ~/.claude/stats-cache.json for token summary (today/yesterday/7d counts + dominant model)
   BindingView.swift       — SwiftUI: table-layout hero (Pace/Now/Resets rows × 5h/7d columns)
@@ -31,7 +32,8 @@ KeychainService → OAuthCredentials
   → QuotaService → domain models → @Published QuotaState
   → Combine sink:
     → HistoryStore.append() → ~/.tokenshepherd/history.jsonl
-    → For BOTH windows: readForWindow() → TrendCalculator → trend → projectAtReset()
+    → 5h: readForWindow() → TrendCalculator → trend → projectAtReset() (rate + trend, reactive)
+    → 7d: UsageProfiler.projectAtReset() (hourly profile, time-of-day aware) or rate-based fallback
     → Per-window ShepherdState.from() → independent coloring
     → Icon = worst state (by severity)
     → BindingView (table hero: Pace/Now/Resets × 5h/7d)
@@ -61,11 +63,9 @@ Row labels (Pace/Now/Resets) on the left, 5h and 7d columns on the right. Pace r
 
 ## Projection Calculation
 
-`projectAtReset()` in main.swift — extracted function, called for both windows. Rate-based (whole window average) as baseline, trend-based (recent velocity) upgrades if higher. Takes the max — more conservative warning.
+**5h window** — `projectAtReset()` in main.swift. Rate-based (whole window average) as baseline, trend-based (60min velocity) upgrades if higher. Session-level, reactive. Guardrails: 4× proportional cap on trend extrapolation, 15+ min of data to push above 90%.
 
-Guardrails:
-1. Proportional cap: project at most N× observation span — 4× for 5h, 1.7× for 7d.
-2. Minimum evidence for red: 15+ min of data to push above 90%.
+**7d window** — `projectSevenDay()` in main.swift → `UsageProfiler`. Builds an hourly consumption profile (24 buckets, one per hour-of-day) from all available history. Projects by walking forward hour-by-hour from now to reset, summing expected consumption per time slot. Confidence-weighted: buckets with few samples (<30) are attenuated toward 0 to prevent outlier spikes from dominating. Falls back to rate-based when history is too thin (<3 active hours in profile).
 
 ## Local Storage
 

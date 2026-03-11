@@ -56,6 +56,14 @@ Builds, signs, installs to `/Applications`, and starts automatically on login.
 
 </details>
 
+## Update
+
+1. Download `TokenShepherd.zip` from the [latest release](https://github.com/jflairie/tokenshepherd/releases/latest)
+2. Unzip and drag `TokenShepherd.app` to `/Applications` — click **Replace** when prompted
+3. The app restarts automatically with the new version
+
+Your data (`~/.tokenshepherd/`) is preserved across updates.
+
 ## Uninstall
 
 Drag `TokenShepherd.app` from `/Applications` to the Trash.

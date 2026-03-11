@@ -11,6 +11,9 @@ let package = Package(
             path: "Sources/TokenShepherd",
             resources: [
                 .copy("../../Resources/Info.plist")
+            ],
+            swiftSettings: [
+                .define("DEBUG", .when(configuration: .debug))
             ]
         )
     ]
