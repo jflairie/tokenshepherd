@@ -61,10 +61,9 @@ struct APIService {
     }
 
     static func fetchQuota(accessToken: String) async throws -> APIQuotaResponse {
-        var request = URLRequest(url: URL(string: "https://api.anthropic.com/api/oauth/usage")!)
+        var request = URLRequest(url: URL(string: "https://platform.claude.com/api/oauth/usage")!)
         request.httpMethod = "GET"
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-        request.setValue("oauth-2025-04-20", forHTTPHeaderField: "anthropic-beta")
         request.setValue("tokenshepherd/0.1.0", forHTTPHeaderField: "User-Agent")
 
         let (data, response): (Data, URLResponse)
