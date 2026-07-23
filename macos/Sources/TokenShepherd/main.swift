@@ -192,7 +192,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let fhState = ShepherdState.from(window: quota.fiveHour, pace: fiveHourPace, projectedAtReset: fhProjection)
             let sdState = ShepherdState.from(window: quota.sevenDay, pace: sevenDayPace, projectedAtReset: sdProjection)
 
-            // Icon = worst window
+            // Icon = worst window. sdState carries the *binding* weekly (worst of
+            // weekly_all / weekly_scoped, chosen in QuotaService.bindingWeekly), so this
+            // max already reflects the worst of all three limits — do NOT add a third here.
             latestState = fhState.severity >= sdState.severity ? fhState : sdState
 
             let heroView = NSHostingView(rootView: BindingView(

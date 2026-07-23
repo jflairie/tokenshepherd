@@ -12,13 +12,49 @@ struct APIQuotaWindow: Codable {
     }
 }
 
-struct APIQuotaResponse: Codable {
+struct APIQuotaResponse: Decodable {
     let fiveHour: APIQuotaWindow
     let sevenDay: APIQuotaWindow
+    let limits: [APILimit]?      // per-limit array: session / weekly_all / weekly_scoped
 
     enum CodingKeys: String, CodingKey {
         case fiveHour = "five_hour"
         case sevenDay = "seven_day"
+        case limits
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        fiveHour = try c.decode(APIQuotaWindow.self, forKey: .fiveHour)
+        sevenDay = try c.decode(APIQuotaWindow.self, forKey: .sevenDay)
+        // Lossy on purpose: a missing or malformed `limits` array must never break the
+        // core response — we simply fall back to the legacy five_hour/seven_day fields.
+        limits = try? c.decode([APILimit].self, forKey: .limits)
+    }
+}
+
+/// One entry in the quota API's `limits` array.
+struct APILimit: Decodable {
+    let kind: String        // "session" | "weekly_all" | "weekly_scoped" | …
+    let group: String       // "session" | "weekly"
+    let percent: Double     // 0-100 utilization
+    let resetsAt: String?
+    let scope: APILimitScope?
+
+    enum CodingKeys: String, CodingKey {
+        case kind, group, percent, scope
+        case resetsAt = "resets_at"
+    }
+}
+
+struct APILimitScope: Decodable {
+    let model: APILimitModel?
+}
+
+struct APILimitModel: Decodable {
+    let displayName: String?
+    enum CodingKeys: String, CodingKey {
+        case displayName = "display_name"
     }
 }
 
@@ -27,6 +63,13 @@ struct APIQuotaResponse: Codable {
 struct QuotaWindow {
     let utilization: Double  // 0.0-1.0
     let resetsAt: Date
+    let label: String?       // model name when the per-model weekly is the binding limit
+
+    init(utilization: Double, resetsAt: Date, label: String? = nil) {
+        self.utilization = utilization
+        self.resetsAt = resetsAt
+        self.label = label
+    }
 
     var resetsInFormatted: String {
         let interval = resetsAt.timeIntervalSinceNow
