@@ -35,7 +35,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return
         }
 
-        button.image = StatusBarIcon.icon(for: .calm)
+        button.image = StatusBarIcon.icon(for: .calm, blind: true)   // unknown until first sync
 
         let menu = NSMenu()
         menu.delegate = self
@@ -48,7 +48,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         // Actions footer
         footerItem = NSMenuItem()
-        updateFooter(fetchedAt: nil)
+        updateFooter(dataAt: nil)
         menu.addItem(footerItem)
 
         // Hidden items for keyboard shortcuts
@@ -69,13 +69,23 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         setLoadingState()
 
         quotaService.$state
+            .combineLatest(quotaService.$health)
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] state in
+            .sink { [weak self] state, _ in
                 self?.updateUI(state)
             }
             .store(in: &cancellables)
 
         quotaService.startBackgroundRefresh()
+
+        // Re-sync immediately on wake — the 60s poll timer doesn't fire while asleep,
+        // so without this the first post-wake reading can be minutes stale.
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self,
+            selector: #selector(handleWake),
+            name: NSWorkspace.didWakeNotification,
+            object: nil
+        )
 
         // Housekeeping
         HistoryStore.prune()
@@ -91,11 +101,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func menuWillOpen(_ menu: NSMenu) {
-        quotaService.refresh()
+        quotaService.refresh(force: true)
     }
 
     @objc private func refresh() {
-        quotaService.refresh()
+        quotaService.refresh(force: true)
+    }
+
+    @objc private func handleWake() {
+        quotaService.refresh(force: true)
     }
 
     @objc private func quit() {
@@ -125,7 +139,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         switch state {
         case .loading:
             setLoadingState()
-            updateFooter(fetchedAt: nil)
 
         case .idle:
             latestState = .idle
@@ -144,8 +157,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             )
             idleView.frame.size = idleView.fittingSize
             contentItem.view = idleView
-            updateIcon()
-            updateFooter(fetchedAt: nil)
 
         case .error(let message):
             let errorView = NSHostingView(rootView:
@@ -164,7 +175,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             )
             errorView.frame.size = errorView.fittingSize
             contentItem.view = errorView
-            updateFooter(fetchedAt: nil)
 
         case .loaded(let quota):
             let fiveHourPace = PaceCalculator.pace(for: quota.fiveHour, windowDuration: PaceCalculator.fiveHourDuration)
@@ -195,15 +205,20 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             ))
             heroView.frame.size = heroView.fittingSize
             contentItem.view = heroView
-
-            updateIcon()
-            updateFooter(fetchedAt: quota.fetchedAt)
         }
+
+        // Icon and footer always reflect the current data AND fetch health: when recent
+        // fetches failed (or we've never synced) the sheep goes "blind" and the footer
+        // states the real reason, instead of asserting the stale numbers are current.
+        updateIcon()
+        let dataAt: Date? = { if case .loaded(let quota) = state { return quota.fetchedAt } else { return nil } }()
+        updateFooter(dataAt: dataAt)
     }
 
-    private func updateFooter(fetchedAt: Date?) {
+    private func updateFooter(dataAt: Date?) {
         let footerView = NSHostingView(rootView: FooterView(
-            fetchedAt: fetchedAt
+            dataAt: dataAt,
+            health: quotaService.health
         ))
         footerView.frame.size = footerView.fittingSize
         footerItem.view = footerView
@@ -211,7 +226,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func updateIcon() {
         guard let button = statusItem.button else { return }
-        button.image = StatusBarIcon.icon(for: latestState)
+        button.image = StatusBarIcon.icon(for: latestState, blind: quotaService.health.isBlind)
         button.title = ""
     }
 
@@ -276,17 +291,27 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 // MARK: - Footer
 
 struct FooterView: View {
-    let fetchedAt: Date?
+    let dataAt: Date?          // fetchedAt of the data currently on screen (nil if none)
+    let health: FetchHealth
 
     var body: some View {
-        HStack(spacing: 0) {
+        HStack(spacing: 4) {
             #if DEBUG
-            Text("dev · ")
+            Text("dev ·")
                 .font(.system(size: 10))
                 .foregroundStyle(.quaternary)
             #endif
-            if let fetchedAt {
-                Text(syncStatus(fetchedAt))
+            if health.isBlind, health.lastFailureReason == .unreachable {
+                // Stale because we can't reach the API — state the real cause, and break
+                // the quaternary tone: a staleness alert can't be the faintest pixel.
+                Image(systemName: "exclamationmark.triangle")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.orange)
+                Text(unreachableStatus)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+            } else if let dataAt {
+                Text(syncedStatus(dataAt))
                     .font(.system(size: 10))
                     .foregroundStyle(.quaternary)
             }
@@ -297,14 +322,21 @@ struct FooterView: View {
         .padding(.vertical, 6)
     }
 
-    private func syncStatus(_ date: Date) -> String {
+    private var unreachableStatus: String {
+        guard let dataAt else { return "Can't reach Anthropic" }
+        return "Can't reach Anthropic · last synced \(age(dataAt))"
+    }
+
+    private func syncedStatus(_ date: Date) -> String {
+        Int(Date().timeIntervalSince(date)) < 90 ? "Synced" : "Synced \(age(date))"
+    }
+
+    private func age(_ date: Date) -> String {
         let seconds = Int(Date().timeIntervalSince(date))
-        if seconds < 90 { return "Synced" }
         let minutes = seconds / 60
-        if minutes < 60 { return "Synced \(minutes)m ago" }
+        if minutes < 60 { return "\(minutes)m ago" }
         let hours = minutes / 60
-        let age = hours < 24 ? "\(hours)h ago" : "\(hours / 24)d ago"
-        return "Synced \(age) — use Claude to refresh"
+        return hours < 24 ? "\(hours)h ago" : "\(hours / 24)d ago"
     }
 }
 
