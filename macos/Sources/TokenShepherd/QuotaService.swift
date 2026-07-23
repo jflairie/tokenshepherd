@@ -3,9 +3,15 @@ import Combine
 
 class QuotaService: ObservableObject {
     @Published var state: QuotaState = .loading
+    /// Fetch freshness, published alongside `state` so the UI can signal staleness
+    /// without the data itself changing (a failed fetch keeps the stale `state`).
+    @Published private(set) var health = FetchHealth.initial
 
     private static let minRefreshInterval: TimeInterval = 30
+    private static let baseInterval: TimeInterval = 60      // matches the poll timer
+    private static let maxBackoff: TimeInterval = 900       // 15 min cap
     private var isFetching = false
+    private var nextAllowedFetch: Date = .distantPast       // backoff gate for auto-polls
     private var backgroundTimer: Timer?
     private var previousFiveHourResetsAt: Date?
     private var previousSevenDayResetsAt: Date?
@@ -23,14 +29,22 @@ class QuotaService: ObservableObject {
         }
     }
 
-    func refresh() {
+    /// `force` (menu open, ⌘R, wake) bypasses the freshness + backoff gates so an
+    /// explicit user/system request always attempts a fetch. Auto-polls do not, so a
+    /// rate-limited endpoint isn't hammered every 60s during an outage.
+    func refresh(force: Bool = false) {
         // Skip if already fetching
         guard !isFetching else { return }
 
-        // Skip if data is fresh enough
-        if case .loaded(let data) = state,
-           Date().timeIntervalSince(data.fetchedAt) < Self.minRefreshInterval {
-            return
+        if !force {
+            // Respect backoff after repeated failures
+            if Date() < nextAllowedFetch { return }
+
+            // Skip if data is fresh enough
+            if case .loaded(let data) = state,
+               Date().timeIntervalSince(data.fetchedAt) < Self.minRefreshInterval {
+                return
+            }
         }
 
         // Only show loading spinner on first fetch (no data yet)
@@ -46,19 +60,49 @@ class QuotaService: ObservableObject {
             guard let self else { return }
             let result = await self.fetchData()
             await MainActor.run {
-                if case .loaded = result {
-                    self.state = result
-                } else if case .loaded(let stale) = self.state {
-                    // Re-publish stale data to keep footer current
-                    self.state = .loaded(stale)
-                } else if let bootstrap = QuotaService.bootstrapFromHistory() {
-                    self.state = .loaded(bootstrap)
-                } else {
-                    self.state = result
+                switch result {
+                case .loaded(let data):
+                    self.state = .loaded(data)
+                    self.health = FetchHealth(lastSuccessAt: data.fetchedAt,
+                                              consecutiveFailures: 0,
+                                              lastFailureReason: nil)
+                    self.nextAllowedFetch = .distantPast   // recovered — resume normal cadence
+                case .idle:
+                    self.recordFailure(reason: .waitingForClaude, fallback: result)
+                case .error:
+                    self.recordFailure(reason: .unreachable, fallback: result)
+                case .loading:
+                    break   // fetchData never returns .loading
                 }
                 self.isFetching = false
             }
         }
+    }
+
+    /// A fetch attempt failed. Keep the last-known data on screen (don't blank the UI),
+    /// but record the failure so the icon/footer can be honest, and back off the next
+    /// auto-poll. `state` is intentionally left unchanged when stale data exists — the
+    /// `health` change alone drives the UI, so backing off the poll can't freeze the signal.
+    private func recordFailure(reason: FetchFailureReason, fallback: QuotaState) {
+        health.consecutiveFailures += 1
+        health.lastFailureReason = reason
+        scheduleBackoff()
+
+        if case .loaded = state {
+            // Keep showing stale data (state unchanged).
+        } else if let bootstrap = QuotaService.bootstrapFromHistory() {
+            // Cold start with prior history: show it, but health stays cold (no
+            // lastSuccessAt) so the icon renders blind — bootstrapped data is not live.
+            state = .loaded(bootstrap)
+        } else {
+            state = fallback
+        }
+    }
+
+    private func scheduleBackoff() {
+        let step = Double(max(health.consecutiveFailures - 1, 0))   // 1st fail → base
+        let delay = min(Self.baseInterval * pow(2, step), Self.maxBackoff)
+        nextAllowedFetch = Date().addingTimeInterval(delay)
     }
 
     private func fetchData() async -> QuotaState {

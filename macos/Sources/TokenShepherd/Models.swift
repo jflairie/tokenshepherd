@@ -62,6 +62,38 @@ enum QuotaState {
     case error(String)
 }
 
+// MARK: - Fetch Health
+
+/// Why the last fetch attempt failed. Coarse on purpose — it only needs to drive
+/// the footer copy and tell an unreachable API apart from a genuinely idle token.
+enum FetchFailureReason: Equatable {
+    case unreachable       // network error, non-2xx, or every endpoint failed
+    case waitingForClaude  // token expired and our own refresh failed
+}
+
+/// Fetch freshness, tracked separately from the quota data so the UI can be honest
+/// about staleness without discarding the last-known numbers.
+///
+/// Staleness is measured by *consecutive failed attempts*, not wall-clock age:
+/// no polls fire while the Mac is asleep, so a wall-clock rule would flash "blind"
+/// on every wake and train the user to ignore the signal.
+struct FetchHealth {
+    var lastSuccessAt: Date?          // last *live* success this run; nil = never (cold)
+    var consecutiveFailures: Int
+    var lastFailureReason: FetchFailureReason?
+
+    /// Attempts allowed to fail before the ambient icon stops asserting the level.
+    /// Rides out a single transient 429/network blip; a real outage crosses it.
+    static let blindThreshold = 3
+
+    /// No trustworthy current reading — cold (never synced) or failing past the threshold.
+    var isBlind: Bool {
+        lastSuccessAt == nil || consecutiveFailures >= Self.blindThreshold
+    }
+
+    static let initial = FetchHealth(lastSuccessAt: nil, consecutiveFailures: 0, lastFailureReason: nil)
+}
+
 // MARK: - Auth
 
 struct OAuthCredentials {

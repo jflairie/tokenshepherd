@@ -41,6 +41,7 @@ struct APIService {
     static func refreshToken(using refreshToken: String) async throws -> TokenResponse {
         var request = URLRequest(url: URL(string: "https://platform.claude.com/v1/oauth/token")!)
         request.httpMethod = "POST"
+        request.timeoutInterval = 20
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("tokenshepherd/0.1.0", forHTTPHeaderField: "User-Agent")
 
@@ -77,6 +78,7 @@ struct APIService {
         for endpoint in quotaEndpoints {
             var request = URLRequest(url: URL(string: endpoint.url)!)
             request.httpMethod = "GET"
+            request.timeoutInterval = 20
             request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
             if let beta = endpoint.betaHeader {
                 request.setValue(beta, forHTTPHeaderField: "anthropic-beta")
