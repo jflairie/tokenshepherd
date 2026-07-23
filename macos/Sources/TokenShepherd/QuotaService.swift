@@ -15,6 +15,8 @@ class QuotaService: ObservableObject {
     private var backgroundTimer: Timer?
     private var previousFiveHourResetsAt: Date?
     private var previousSevenDayResetsAt: Date?
+    private var bindingWeeklyKind: String?                  // hysteresis: which weekly limit is currently binding
+    private static let bindingHysteresis: Double = 5.0      // pts the challenger must lead by to switch
 
     private static let isoFormatter: ISO8601DateFormatter = {
         let f = ISO8601DateFormatter()
@@ -163,11 +165,43 @@ class QuotaService: ObservableObject {
     }
 
     private func mapResponse(_ api: APIQuotaResponse) -> QuotaData {
-        QuotaData(
+        // Prefer the new limits[] array: session -> 5h, the *binding* weekly -> 7d.
+        if let limits = api.limits, !limits.isEmpty {
+            let session = limits.first { $0.group == "session" }
+            let weekly = bindingWeekly(from: limits.filter { $0.group == "weekly" })
+            return QuotaData(
+                fiveHour: session.map(mapLimit) ?? mapWindow(api.fiveHour),
+                sevenDay: weekly.map(mapLimit) ?? mapWindow(api.sevenDay),
+                fetchedAt: Date()
+            )
+        }
+        // Fallback: legacy two-field response (also the path if limits[] is dropped/malformed).
+        return QuotaData(
             fiveHour: mapWindow(api.fiveHour),
             sevenDay: mapWindow(api.sevenDay),
             fetchedAt: Date()
         )
+    }
+
+    /// The weekly limit that bites first = worst by utilization, with hysteresis so the shown
+    /// number/label doesn't flicker between weekly_all and weekly_scoped as they converge.
+    private func bindingWeekly(from weekly: [APILimit]) -> APILimit? {
+        guard let challenger = weekly.max(by: { $0.percent < $1.percent }) else { return nil }
+        if let incumbentKind = bindingWeeklyKind,
+           let incumbent = weekly.first(where: { $0.kind == incumbentKind }),
+           incumbent.kind != challenger.kind,
+           challenger.percent <= incumbent.percent + Self.bindingHysteresis {
+            return incumbent   // challenger hasn't cleared the margin — hold steady
+        }
+        bindingWeeklyKind = challenger.kind
+        return challenger
+    }
+
+    private func mapLimit(_ limit: APILimit) -> QuotaWindow {
+        let date = limit.resetsAt.flatMap { Self.isoFormatter.date(from: $0) } ?? Date()
+        // Annotate only the per-model (scoped) weekly, so the 7d header can read "7d · Fable".
+        let label = limit.kind == "weekly_scoped" ? limit.scope?.model?.displayName : nil
+        return QuotaWindow(utilization: limit.percent / 100.0, resetsAt: date, label: label)
     }
 
     private func mapWindow(_ api: APIQuotaWindow) -> QuotaWindow {

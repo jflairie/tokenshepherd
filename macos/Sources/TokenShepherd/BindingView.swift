@@ -54,9 +54,10 @@ struct BindingView: View {
                 .font(.system(.caption2, weight: .semibold))
                 .foregroundStyle(.tertiary)
                 .frame(maxWidth: .infinity)
-            Text("7d")
+            Text(quota.sevenDay.label.map { "7d · \($0)" } ?? "7d")
                 .font(.system(.caption2, weight: .semibold))
                 .foregroundStyle(.tertiary)
+                .lineLimit(1)
                 .frame(maxWidth: .infinity)
         }
 
