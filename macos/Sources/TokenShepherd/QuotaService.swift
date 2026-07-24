@@ -11,6 +11,8 @@ class QuotaService: ObservableObject {
     private static let baseInterval: TimeInterval = 60      // matches the poll timer
     private static let maxBackoff: TimeInterval = 900       // 15 min cap
     private var isFetching = false
+    private var fetchStartedAt: Date?                       // watchdog: when the in-flight fetch began
+    private static let fetchWatchdog: TimeInterval = 120    // rearm isFetching if a fetch hangs this long
     private var nextAllowedFetch: Date = .distantPast       // backoff gate for auto-polls
     private var backgroundTimer: Timer?
     private var previousFiveHourResetsAt: Date?
@@ -35,8 +37,17 @@ class QuotaService: ObservableObject {
     /// explicit user/system request always attempts a fetch. Auto-polls do not, so a
     /// rate-limited endpoint isn't hammered every 60s during an outage.
     func refresh(force: Bool = false) {
-        // Skip if already fetching
-        guard !isFetching else { return }
+        // Skip if a fetch is already in flight — but rearm if it has wedged. A hung
+        // subprocess with no timeout used to freeze this loop permanently (nothing ever
+        // reset isFetching), leaving the sheep blind/stale until a manual restart.
+        if isFetching {
+            if let started = fetchStartedAt, Date().timeIntervalSince(started) > Self.fetchWatchdog {
+                NSLog("[TokenShepherd] fetch wedged > %.0fs — rearming", Self.fetchWatchdog)
+                isFetching = false
+            } else {
+                return
+            }
+        }
 
         if !force {
             // Respect backoff after repeated failures
@@ -57,6 +68,7 @@ class QuotaService: ObservableObject {
         }
 
         isFetching = true
+        fetchStartedAt = Date()
 
         Task.detached { [weak self] in
             guard let self else { return }
@@ -77,6 +89,7 @@ class QuotaService: ObservableObject {
                     break   // fetchData never returns .loading
                 }
                 self.isFetching = false
+                self.fetchStartedAt = nil
             }
         }
     }

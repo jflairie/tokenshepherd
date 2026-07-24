@@ -27,10 +27,7 @@ struct KeychainService {
         process.standardOutput = stdout
         process.standardError = stderr
 
-        try process.run()
-        process.waitUntilExit()
-
-        guard process.terminationStatus == 0 else {
+        guard try runWithTimeout(process), process.terminationStatus == 0 else {
             throw KeychainError.notFound
         }
 
@@ -95,10 +92,7 @@ struct KeychainService {
         let stderr = Pipe()
         process.standardOutput = stdout
         process.standardError = stderr
-        try process.run()
-        process.waitUntilExit()
-
-        guard process.terminationStatus == 0 else {
+        guard try runWithTimeout(process), process.terminationStatus == 0 else {
             throw KeychainError.writeError("Cannot read existing entry")
         }
 
@@ -140,10 +134,7 @@ struct KeychainService {
         let writeErr = Pipe()
         writeProc.standardError = writeErr
         writeProc.standardOutput = Pipe()
-        try writeProc.run()
-        writeProc.waitUntilExit()
-
-        guard writeProc.terminationStatus == 0 else {
+        guard try runWithTimeout(writeProc), writeProc.terminationStatus == 0 else {
             let errMsg = String(data: writeErr.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? "unknown"
             throw KeychainError.writeError(errMsg)
         }
@@ -158,10 +149,7 @@ struct KeychainService {
         let stderr = Pipe()
         process.standardOutput = stdout
         process.standardError = stderr
-        try process.run()
-        process.waitUntilExit()
-
-        guard process.terminationStatus == 0 else {
+        guard try runWithTimeout(process), process.terminationStatus == 0 else {
             throw KeychainError.notFound
         }
 
@@ -180,5 +168,20 @@ struct KeychainService {
             }
         }
         throw KeychainError.writeError("Cannot determine account name")
+    }
+
+    /// Run `process` and wait for exit with a hard timeout. Returns false if it timed out
+    /// (the process is terminated). A hung/locked-keychain `security` must never block
+    /// forever — that used to wedge the fetch loop until a manual restart.
+    @discardableResult
+    private static func runWithTimeout(_ process: Process, seconds: TimeInterval = 10) throws -> Bool {
+        let sema = DispatchSemaphore(value: 0)
+        process.terminationHandler = { _ in sema.signal() }
+        try process.run()
+        if sema.wait(timeout: .now() + seconds) == .timedOut {
+            process.terminate()
+            return false
+        }
+        return true
     }
 }
