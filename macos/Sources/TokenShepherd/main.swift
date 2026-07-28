@@ -138,7 +138,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     .font(.system(.caption))
                     .foregroundStyle(.secondary)
             }
-            .frame(width: 280)
+            .frame(width: 340)
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
         )
@@ -164,7 +164,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
-                .frame(width: 280, alignment: .leading)
+                .frame(width: 340, alignment: .leading)
             )
             idleView.frame.size = idleView.fittingSize
             contentItem.view = idleView
@@ -182,7 +182,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
-                .frame(width: 280, alignment: .leading)
+                .frame(width: 340, alignment: .leading)
             )
             errorView.frame.size = errorView.fittingSize
             contentItem.view = errorView
@@ -202,10 +202,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             // Per-window state (independent coloring)
             let fhState = ShepherdState.from(window: quota.fiveHour, pace: fiveHourPace, projectedAtReset: fhProjection)
             let sdState = ShepherdState.from(window: quota.sevenDay, pace: sevenDayPace, projectedAtReset: sdProjection)
-            // Per-model weekly (Fable) — colored by its own current utilization, no projection.
-            // A popup detail only.
-            let scopedState = quota.weeklyScoped.map {
-                ShepherdState.from(window: $0, pace: nil, projectedAtReset: nil)
+            // Per-model weekly (Fable) — full column: rate-based Pace + its own state.
+            // Still display-only: it does NOT drive the icon.
+            let scopedProjection: Double?
+            let scopedState: ShepherdState?
+            if let scoped = quota.weeklyScoped {
+                let scopedPace = PaceCalculator.pace(for: scoped, windowDuration: PaceCalculator.sevenDayDuration)
+                scopedProjection = projectWeeklyRate(window: scoped)
+                scopedState = ShepherdState.from(window: scoped, pace: scopedPace, projectedAtReset: scopedProjection)
+            } else {
+                scopedProjection = nil
+                scopedState = nil
             }
 
             // Icon = worst of 5h + weekly_all ("all credits" / total lockout). The per-model
@@ -219,6 +226,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 scopedState: scopedState,
                 fhProjection: fhProjection,
                 sdProjection: sdProjection,
+                scopedProjection: scopedProjection,
                 tokenSummary: cachedTokenSummary
             ))
             heroView.frame.size = heroView.fittingSize
@@ -304,6 +312,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard elapsed > 60 else { return nil }
         return (window.utilization / elapsed) * PaceCalculator.sevenDayDuration
     }
+
+    /// Rate-based projection for the per-model weekly (Fable) — no history series (MVP).
+    private func projectWeeklyRate(window: QuotaWindow) -> Double? {
+        let timeToReset = window.resetsAt.timeIntervalSinceNow
+        guard timeToReset > 0, window.utilization > 0.01 else { return nil }
+        let elapsed = PaceCalculator.sevenDayDuration - timeToReset
+        guard elapsed > 60 else { return nil }
+        return (window.utilization / elapsed) * PaceCalculator.sevenDayDuration
+    }
 }
 
 // MARK: - Footer
@@ -335,7 +352,7 @@ struct FooterView: View {
             }
             Spacer()
         }
-        .frame(width: 252)
+        .frame(width: 312)
         .padding(.horizontal, 14)
         .padding(.vertical, 6)
     }
