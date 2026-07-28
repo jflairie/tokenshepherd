@@ -10,6 +10,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var cancellables = Set<AnyCancellable>()
     private var cachedTokenSummary: TokenSummary?
     private var statsCacheTimer: Timer?
+    private var activityToken: NSObjectProtocol?          // holds off App Nap for the app's lifetime
     private var latestState: ShepherdState = .calm
 
     private var contentItem: NSMenuItem!
@@ -28,6 +29,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func setupStatusItem() {
+        // Prevent App Nap from suspending the 60s poll timer when the app is idle/hidden
+        // (that left the sheep stuck on stale data until you opened the menu). The
+        // "AllowingIdleSystemSleep" variant still lets the Mac sleep normally.
+        activityToken = ProcessInfo.processInfo.beginActivity(
+            options: .userInitiatedAllowingIdleSystemSleep,
+            reason: "Continuously monitor Claude Code quota"
+        )
+
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
 
         guard let button = statusItem.button else {
@@ -109,6 +118,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc private func handleWake() {
+        // Sleep can leave the repeating timer desynced — reschedule it, then sync now.
+        quotaService.startBackgroundRefresh()
         quotaService.refresh(force: true)
     }
 
