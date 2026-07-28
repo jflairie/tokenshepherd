@@ -4,6 +4,7 @@ struct BindingView: View {
     let quota: QuotaData
     let fhState: ShepherdState
     let sdState: ShepherdState
+    let scopedState: ShepherdState?
     let fhProjection: Double?
     let sdProjection: Double?
     let tokenSummary: TokenSummary?
@@ -21,6 +22,10 @@ struct BindingView: View {
                 expiredHero
             } else {
                 heroTable
+            }
+            // Per-model weekly (e.g. "Fable · 68%") — a detail, not a column; hidden when absent.
+            if let scoped = quota.weeklyScoped, let model = scoped.label {
+                fableDetail(scoped: scoped, model: model)
             }
         }
         .padding(.horizontal, 14)
@@ -54,10 +59,9 @@ struct BindingView: View {
                 .font(.system(.caption2, weight: .semibold))
                 .foregroundStyle(.tertiary)
                 .frame(maxWidth: .infinity)
-            Text(quota.sevenDay.label.map { "7d · \($0)" } ?? "7d")
+            Text("7d")
                 .font(.system(.caption2, weight: .semibold))
                 .foregroundStyle(.tertiary)
-                .lineLimit(1)
                 .frame(maxWidth: .infinity)
         }
 
@@ -170,6 +174,23 @@ struct BindingView: View {
     }
 
     // MARK: - Helpers
+
+    @ViewBuilder
+    private func fableDetail(scoped: QuotaWindow, model: String) -> some View {
+        // Subtle by default; the % takes its own severity color only when elevated,
+        // so a running-low per-model cap still reads at a glance without touching the sheep.
+        let elevated = (scopedState?.severity ?? 0) > 0
+        HStack(spacing: 4) {
+            Text("\(model) weekly")
+                .font(.system(.caption2))
+                .foregroundStyle(.tertiary)
+            Spacer()
+            Text("\(Int(scoped.utilization * 100))%")
+                .font(.system(.caption2, weight: .medium))
+                .monospacedDigit()
+                .foregroundStyle(elevated ? (scopedState?.color ?? Color.secondary) : Color.secondary)
+        }
+    }
 
     @ViewBuilder
     private var modelLabel: some View {
