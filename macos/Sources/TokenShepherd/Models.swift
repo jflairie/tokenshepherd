@@ -94,7 +94,8 @@ struct QuotaWindow {
 
 struct QuotaData {
     let fiveHour: QuotaWindow
-    let sevenDay: QuotaWindow
+    let sevenDay: QuotaWindow           // weekly_all — the overall weekly ("all credits")
+    let weeklyScoped: QuotaWindow?      // per-model weekly (e.g. Fable) — a popup detail, NOT in the icon
     let fetchedAt: Date
 }
 

@@ -17,8 +17,6 @@ class QuotaService: ObservableObject {
     private var backgroundTimer: Timer?
     private var previousFiveHourResetsAt: Date?
     private var previousSevenDayResetsAt: Date?
-    private var bindingWeeklyKind: String?                  // hysteresis: which weekly limit is currently binding
-    private static let bindingHysteresis: Double = 5.0      // pts the challenger must lead by to switch
 
     private static let isoFormatter: ISO8601DateFormatter = {
         let f = ISO8601DateFormatter()
@@ -173,18 +171,23 @@ class QuotaService: ObservableObject {
         return QuotaData(
             fiveHour: QuotaWindow(utilization: entry.fiveHourUtil, resetsAt: entry.fiveHourResetsAt),
             sevenDay: QuotaWindow(utilization: entry.sevenDayUtil, resetsAt: entry.sevenDayResetsAt),
+            weeklyScoped: nil,   // history doesn't store the per-model weekly
             fetchedAt: entry.ts
         )
     }
 
     private func mapResponse(_ api: APIQuotaResponse) -> QuotaData {
-        // Prefer the new limits[] array: session -> 5h, the *binding* weekly -> 7d.
+        // Prefer the new limits[] array: session -> 5h, weekly_all -> 7d ("all credits"),
+        // weekly_scoped -> the per-model detail row. The sheep is driven by 5h + weekly_all
+        // only; the scoped (Fable) limit is a popup detail, deliberately not in the icon.
         if let limits = api.limits, !limits.isEmpty {
             let session = limits.first { $0.group == "session" }
-            let weekly = bindingWeekly(from: limits.filter { $0.group == "weekly" })
+            let weeklyAll = limits.first { $0.kind == "weekly_all" }
+            let scoped = limits.first { $0.kind == "weekly_scoped" }
             return QuotaData(
                 fiveHour: session.map(mapLimit) ?? mapWindow(api.fiveHour),
-                sevenDay: weekly.map(mapLimit) ?? mapWindow(api.sevenDay),
+                sevenDay: weeklyAll.map(mapLimit) ?? mapWindow(api.sevenDay),
+                weeklyScoped: scoped.map(mapLimit),
                 fetchedAt: Date()
             )
         }
@@ -192,27 +195,14 @@ class QuotaService: ObservableObject {
         return QuotaData(
             fiveHour: mapWindow(api.fiveHour),
             sevenDay: mapWindow(api.sevenDay),
+            weeklyScoped: nil,
             fetchedAt: Date()
         )
     }
 
-    /// The weekly limit that bites first = worst by utilization, with hysteresis so the shown
-    /// number/label doesn't flicker between weekly_all and weekly_scoped as they converge.
-    private func bindingWeekly(from weekly: [APILimit]) -> APILimit? {
-        guard let challenger = weekly.max(by: { $0.percent < $1.percent }) else { return nil }
-        if let incumbentKind = bindingWeeklyKind,
-           let incumbent = weekly.first(where: { $0.kind == incumbentKind }),
-           incumbent.kind != challenger.kind,
-           challenger.percent <= incumbent.percent + Self.bindingHysteresis {
-            return incumbent   // challenger hasn't cleared the margin — hold steady
-        }
-        bindingWeeklyKind = challenger.kind
-        return challenger
-    }
-
     private func mapLimit(_ limit: APILimit) -> QuotaWindow {
         let date = limit.resetsAt.flatMap { Self.isoFormatter.date(from: $0) } ?? Date()
-        // Annotate only the per-model (scoped) weekly, so the 7d header can read "7d · Fable".
+        // Carry the per-model name on the scoped weekly, for the "Fable · 68%" detail row.
         let label = limit.kind == "weekly_scoped" ? limit.scope?.model?.displayName : nil
         return QuotaWindow(utilization: limit.percent / 100.0, resetsAt: date, label: label)
     }

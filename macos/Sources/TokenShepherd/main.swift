@@ -202,16 +202,21 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             // Per-window state (independent coloring)
             let fhState = ShepherdState.from(window: quota.fiveHour, pace: fiveHourPace, projectedAtReset: fhProjection)
             let sdState = ShepherdState.from(window: quota.sevenDay, pace: sevenDayPace, projectedAtReset: sdProjection)
+            // Per-model weekly (Fable) — colored by its own current utilization, no projection.
+            // A popup detail only.
+            let scopedState = quota.weeklyScoped.map {
+                ShepherdState.from(window: $0, pace: nil, projectedAtReset: nil)
+            }
 
-            // Icon = worst window. sdState carries the *binding* weekly (worst of
-            // weekly_all / weekly_scoped, chosen in QuotaService.bindingWeekly), so this
-            // max already reflects the worst of all three limits — do NOT add a third here.
+            // Icon = worst of 5h + weekly_all ("all credits" / total lockout). The per-model
+            // weekly is intentionally EXCLUDED — hitting it means "switch models", not lockout.
             latestState = fhState.severity >= sdState.severity ? fhState : sdState
 
             let heroView = NSHostingView(rootView: BindingView(
                 quota: quota,
                 fhState: fhState,
                 sdState: sdState,
+                scopedState: scopedState,
                 fhProjection: fhProjection,
                 sdProjection: sdProjection,
                 tokenSummary: cachedTokenSummary
