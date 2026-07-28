@@ -7,30 +7,28 @@ struct BindingView: View {
     let scopedState: ShepherdState?
     let fhProjection: Double?
     let sdProjection: Double?
+    let scopedProjection: Double?
     let tokenSummary: TokenSummary?
 
     private var fhExpired: Bool { quota.fiveHour.resetsAt.timeIntervalSinceNow <= 0 }
     private var sdExpired: Bool { quota.sevenDay.resetsAt.timeIntervalSinceNow <= 0 }
-    private var bothExpired: Bool { fhExpired && sdExpired }
+    private var scopedExpired: Bool { (quota.weeklyScoped?.resetsAt.timeIntervalSinceNow ?? -1) <= 0 }
+    private var allExpired: Bool { fhExpired && sdExpired && scopedExpired }
 
     @State private var showPaceInfo = false
     private let labelWidth: CGFloat = 44
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            if bothExpired {
+            if allExpired {
                 expiredHero
             } else {
                 heroTable
             }
-            // Per-model weekly (e.g. "Fable · 68%") — a detail, not a column; hidden when absent.
-            if let scoped = quota.weeklyScoped, let model = scoped.label {
-                fableDetail(scoped: scoped, model: model)
-            }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 14)
-        .frame(width: 280, alignment: .leading)
+        .frame(width: 340, alignment: .leading)
     }
 
     // MARK: - Expired (both windows reset)
@@ -63,6 +61,13 @@ struct BindingView: View {
                 .font(.system(.caption2, weight: .semibold))
                 .foregroundStyle(.tertiary)
                 .frame(maxWidth: .infinity)
+            if let model = quota.weeklyScoped?.label {
+                Text(model)
+                    .font(.system(.caption2, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity)
+            }
         }
 
         // Pace row (primary signal — "will I be interrupted?")
@@ -86,6 +91,10 @@ struct BindingView: View {
                 .frame(maxWidth: .infinity)
             paceCell(window: quota.sevenDay, state: sdState, projection: sdProjection, expired: sdExpired)
                 .frame(maxWidth: .infinity)
+            if let scoped = quota.weeklyScoped {
+                paceCell(window: scoped, state: scopedState ?? .calm, projection: scopedProjection, expired: scopedExpired)
+                    .frame(maxWidth: .infinity)
+            }
         }
 
         // Now row (current utilization — grounding context)
@@ -98,6 +107,10 @@ struct BindingView: View {
                 .frame(maxWidth: .infinity)
             nowCell(window: quota.sevenDay, state: sdState, expired: sdExpired)
                 .frame(maxWidth: .infinity)
+            if let scoped = quota.weeklyScoped {
+                nowCell(window: scoped, state: scopedState ?? .calm, expired: scopedExpired)
+                    .frame(maxWidth: .infinity)
+            }
         }
 
         // Resets row
@@ -110,6 +123,10 @@ struct BindingView: View {
                 .frame(maxWidth: .infinity)
             resetsCell(window: quota.sevenDay, state: sdState, expired: sdExpired)
                 .frame(maxWidth: .infinity)
+            if let scoped = quota.weeklyScoped {
+                resetsCell(window: scoped, state: scopedState ?? .calm, expired: scopedExpired)
+                    .frame(maxWidth: .infinity)
+            }
         }
     }
 
@@ -174,23 +191,6 @@ struct BindingView: View {
     }
 
     // MARK: - Helpers
-
-    @ViewBuilder
-    private func fableDetail(scoped: QuotaWindow, model: String) -> some View {
-        // Subtle by default; the % takes its own severity color only when elevated,
-        // so a running-low per-model cap still reads at a glance without touching the sheep.
-        let elevated = (scopedState?.severity ?? 0) > 0
-        HStack(spacing: 4) {
-            Text("\(model) weekly")
-                .font(.system(.caption2))
-                .foregroundStyle(.tertiary)
-            Spacer()
-            Text("\(Int(scoped.utilization * 100))%")
-                .font(.system(.caption2, weight: .medium))
-                .monospacedDigit()
-                .foregroundStyle(elevated ? (scopedState?.color ?? Color.secondary) : Color.secondary)
-        }
-    }
 
     @ViewBuilder
     private var modelLabel: some View {
