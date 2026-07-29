@@ -99,7 +99,15 @@ class QuotaService: ObservableObject {
     private func recordFailure(reason: FetchFailureReason, fallback: QuotaState) {
         health.consecutiveFailures += 1
         health.lastFailureReason = reason
-        scheduleBackoff()
+        // Back off only when the endpoint is unreachable (don't hammer a down server). When
+        // we're merely waiting for Claude Code to refresh the shared keychain token
+        // (.waitingForClaude), keep polling at the normal 60s cadence — backing off here would
+        // leave the app stale for minutes after Claude Code finally refreshes the token.
+        if reason == .unreachable {
+            scheduleBackoff()
+        } else {
+            nextAllowedFetch = .distantPast
+        }
 
         if case .loaded = state {
             // Keep showing stale data (state unchanged).
