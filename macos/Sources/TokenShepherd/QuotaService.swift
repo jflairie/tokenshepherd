@@ -73,18 +73,14 @@ class QuotaService: ObservableObject {
             let result = await self.fetchData()
             await MainActor.run {
                 switch result {
-                case .loaded(let data):
+                case .success(let data):
                     self.state = .loaded(data)
                     self.health = FetchHealth(lastSuccessAt: data.fetchedAt,
                                               consecutiveFailures: 0,
                                               lastFailureReason: nil)
                     self.nextAllowedFetch = .distantPast   // recovered — resume normal cadence
-                case .idle:
-                    self.recordFailure(reason: .waitingForClaude, fallback: result)
-                case .error:
-                    self.recordFailure(reason: .unreachable, fallback: result)
-                case .loading:
-                    break   // fetchData never returns .loading
+                case .failure(let failure):
+                    self.recordFailure(failure)
                 }
                 self.isFetching = false
                 self.fetchStartedAt = nil
@@ -96,17 +92,22 @@ class QuotaService: ObservableObject {
     /// but record the failure so the icon/footer can be honest, and back off the next
     /// auto-poll. `state` is intentionally left unchanged when stale data exists — the
     /// `health` change alone drives the UI, so backing off the poll can't freeze the signal.
-    private func recordFailure(reason: FetchFailureReason, fallback: QuotaState) {
+    private func recordFailure(_ failure: FetchFailure) {
+        // Log the first failure of a streak and every change of reason — enough to explain
+        // an outage after the fact without a line per 60s poll for days.
+        if health.consecutiveFailures == 0 || health.lastFailureReason != failure.reason {
+            NSLog("[TokenShepherd] fetch failed (%@): %@", "\(failure.reason)", failure.detail)
+        }
         health.consecutiveFailures += 1
-        health.lastFailureReason = reason
-        // Back off only when the endpoint is unreachable (don't hammer a down server). When
-        // we're merely waiting for Claude Code to refresh the shared keychain token
-        // (.waitingForClaude), keep polling at the normal 60s cadence — backing off here would
-        // leave the app stale for minutes after Claude Code finally refreshes the token.
-        if reason == .unreachable {
-            scheduleBackoff()
-        } else {
+        health.lastFailureReason = failure.reason
+        // Back off unless we're merely waiting for Claude Code to refresh the shared keychain
+        // token (.waitingForClaude): backing off there would leave the app stale for minutes
+        // after Claude Code finally refreshes it. A down server or a dead refresh token gains
+        // nothing from a retry every 60s.
+        if failure.reason == .waitingForClaude {
             nextAllowedFetch = .distantPast
+        } else {
+            scheduleBackoff()
         }
 
         if case .loaded = state {
@@ -116,7 +117,9 @@ class QuotaService: ObservableObject {
             // lastSuccessAt) so the icon renders blind — bootstrapped data is not live.
             state = .loaded(bootstrap)
         } else {
-            state = fallback
+            // No data at all: an unreachable API is an error; a missing/dead login is the idle
+            // view, which offers Connect.
+            state = failure.reason == .unreachable ? .error(failure.detail) : .idle
         }
     }
 
@@ -126,12 +129,18 @@ class QuotaService: ObservableObject {
         nextAllowedFetch = Date().addingTimeInterval(delay)
     }
 
-    private func fetchData() async -> QuotaState {
+    /// Why a fetch produced no live data. `reason` drives the UI; `detail` is for the log.
+    private struct FetchFailure: Error {
+        let reason: FetchFailureReason
+        let detail: String
+    }
+
+    private func fetchData() async -> Result<QuotaData, FetchFailure> {
         // 1. Obtain a valid access token (own login preferred; shared token as fallback)
-        guard let activeToken = await obtainAccessToken() else {
-            // No usable token — either not signed in and the shared token is expired, or our
-            // own login was revoked. Expected idle state (offer sign-in in the UI), not an error.
-            return .idle
+        let activeToken: String
+        switch await obtainAccessToken() {
+        case .success(let token): activeToken = token
+        case .failure(let failure): return .failure(failure)
         }
 
         // 2. Fetch quota from API
@@ -139,7 +148,7 @@ class QuotaService: ObservableObject {
         do {
             apiResponse = try await APIService.fetchQuota(accessToken: activeToken)
         } catch {
-            return .error(error.localizedDescription)
+            return .failure(FetchFailure(reason: .unreachable, detail: error.localizedDescription))
         }
 
         // 4. Map to domain models
@@ -151,39 +160,46 @@ class QuotaService: ObservableObject {
         // 6. Detect window cycle changes and write summaries
         detectWindowCycle(quotaData: quotaData)
 
-        return .loaded(quotaData)
+        return .success(quotaData)
     }
 
     /// Return a valid access token, preferring TokenShepherd's OWN credential (self-refreshing,
     /// independent of Claude Code) and falling back to the shared Claude Code token before the
-    /// user has signed in. Returns nil when no live token can be produced.
-    private func obtainAccessToken() async -> String? {
+    /// user has signed in.
+    private func obtainAccessToken() async -> Result<String, FetchFailure> {
         // 1. Own login (present once the user has signed in). Self-refresh; never touch the
         //    shared Claude Code credential.
         if let own = AuthStore.read() {
-            if !own.isExpired { return own.accessToken }
-            if let refreshed = await refresh(own, into: .own) { return refreshed }
-            // Own refresh failed → the independent login was revoked/expired (needs re-sign-in).
-            // Don't reintroduce the risky shared-token refresh; only reuse the shared token if
-            // it happens to be valid right now (read-only, zero risk to Claude Code's login).
+            if !own.isExpired { return .success(own.accessToken) }
+            let refreshed = await refresh(own, into: .own)
+            if case .success = refreshed { return refreshed }
+            // Own refresh failed. Don't reintroduce the risky shared-token refresh; only reuse
+            // the shared token if it happens to be valid right now (read-only, zero risk to
+            // Claude Code's login). Otherwise surface why ours failed: rejected vs unreachable.
             if let shared = try? KeychainService.readCredentials(), !shared.isExpired {
-                return shared.accessToken
+                return .success(shared.accessToken)
             }
-            return nil
+            return refreshed
         }
 
         // 2. No own login yet — shared Claude Code token (legacy behavior). This is the ONLY
         //    path that still refreshes the shared credential, and only when we own no login.
-        guard let shared = try? KeychainService.readCredentials() else { return nil }
-        if !shared.isExpired { return shared.accessToken }
-        return await refresh(shared, into: .shared)
+        //    Any failure here means "wait for Claude Code to refresh it", whatever the cause.
+        guard let shared = try? KeychainService.readCredentials() else {
+            return .failure(FetchFailure(reason: .waitingForClaude, detail: "no own login and no Claude Code credential"))
+        }
+        if !shared.isExpired { return .success(shared.accessToken) }
+        return await refresh(shared, into: .shared).mapError {
+            FetchFailure(reason: .waitingForClaude, detail: $0.detail)
+        }
     }
 
     private enum CredentialStore { case own, shared }
 
     /// Refresh `creds` and persist the rotated credential to the matching store. Returns the new
-    /// access token, or nil on failure.
-    private func refresh(_ creds: OAuthCredentials, into store: CredentialStore) async -> String? {
+    /// access token. A 4xx from the token endpoint (except 429) means Anthropic rejected the
+    /// refresh token — retrying can't fix it; anything else (network, 5xx, 429) can recover.
+    private func refresh(_ creds: OAuthCredentials, into store: CredentialStore) async -> Result<String, FetchFailure> {
         do {
             let response = try await APIService.refreshToken(using: creds.refreshToken)
             let newCreds = OAuthCredentials(
@@ -195,9 +211,11 @@ class QuotaService: ObservableObject {
             case .own:    try AuthStore.write(newCreds)
             case .shared: try KeychainService.writeCredentials(newCreds)
             }
-            return newCreds.accessToken
+            return .success(newCreds.accessToken)
+        } catch APIError.httpError(let code, let body) where (400..<500).contains(code) && code != 429 {
+            return .failure(FetchFailure(reason: .loginRejected, detail: "refresh rejected (\(code)): \(body)"))
         } catch {
-            return nil
+            return .failure(FetchFailure(reason: .unreachable, detail: "refresh failed: \(error.localizedDescription)"))
         }
     }
 
