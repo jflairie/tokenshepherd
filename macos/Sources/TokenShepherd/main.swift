@@ -3,6 +3,7 @@ import SwiftUI
 import Combine
 import ServiceManagement
 
+@MainActor
 class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem!
     private let quotaService = QuotaService()
@@ -15,6 +16,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private var contentItem: NSMenuItem!
     private var footerItem: NSMenuItem!
+    private var authItem: NSMenuItem!
+    private let signInController = SignInController()
 
     func registerLoginItem() {
         let service = SMAppService.mainApp
@@ -60,6 +63,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         updateFooter(dataAt: nil)
         menu.addItem(footerItem)
 
+        // Auth: sign in for terminal-independent updates (title reflects current state).
+        authItem = NSMenuItem(title: "", action: #selector(toggleAuth), keyEquivalent: "")
+        authItem.target = self
+        refreshAuthItem()
+        menu.addItem(authItem)
+
         // Hidden items for keyboard shortcuts
         let refreshItem = NSMenuItem(title: "Refresh", action: #selector(refresh), keyEquivalent: "r")
         refreshItem.target = self
@@ -102,7 +111,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // Load token summary from Claude Code stats
         cachedTokenSummary = StatsCache.tokenSummary()
         statsCacheTimer = Timer.scheduledTimer(withTimeInterval: 600, repeats: true) { [weak self] _ in
-            self?.cachedTokenSummary = StatsCache.tokenSummary()
+            MainActor.assumeIsolated { self?.cachedTokenSummary = StatsCache.tokenSummary() }
         }
 
         quotaService.refresh()
@@ -110,11 +119,41 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func menuWillOpen(_ menu: NSMenu) {
+        refreshAuthItem()
         quotaService.refresh(force: true)
     }
 
     @objc private func refresh() {
         quotaService.refresh(force: true)
+    }
+
+    // MARK: - Auth
+
+    /// Keep the menu item honest about which credential is live. Understated when signed in —
+    /// the critic's point: don't turn a working calm state into a "should I do something?" nag.
+    private func refreshAuthItem() {
+        if AuthStore.isSignedIn {
+            authItem.title = "Signed in · Disconnect"
+        } else {
+            authItem.title = "Connect account (no terminal needed)…"
+        }
+    }
+
+    @objc private func toggleAuth() {
+        if AuthStore.isSignedIn {
+            AuthStore.clear()
+            refreshAuthItem()
+            quotaService.refresh(force: true)   // fall back to shared token (or idle)
+        } else {
+            startSignIn()
+        }
+    }
+
+    private func startSignIn() {
+        signInController.start { [weak self] in
+            self?.refreshAuthItem()
+            self?.quotaService.refresh(force: true)
+        }
     }
 
     @objc private func handleWake() {
@@ -154,13 +193,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case .idle:
             latestState = .idle
             let idleView = NSHostingView(rootView:
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Waiting for Claude")
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Not tracking quota")
                         .font(.system(.body, weight: .medium))
                         .foregroundStyle(.primary)
-                    Text("Use Claude Code to connect")
+                    Text("Connect your Claude account and the sheep updates on its own — no terminal needed.")
                         .font(.system(.caption))
                         .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Button("Connect account") { [weak self] in self?.startSignIn() }
+                        .controlSize(.small)
+                        .padding(.top, 2)
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
@@ -378,10 +421,14 @@ struct FooterView: View {
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)
 
-let delegate = AppDelegate()
-app.delegate = delegate
-
-delegate.registerLoginItem()
-delegate.setupStatusItem()
+// AppDelegate is @MainActor; this top-level code already runs on the main thread, so assert
+// that isolation to construct and wire it.
+let delegate = MainActor.assumeIsolated { () -> AppDelegate in
+    let delegate = AppDelegate()
+    app.delegate = delegate
+    delegate.registerLoginItem()
+    delegate.setupStatusItem()
+    return delegate
+}
 
 app.run()

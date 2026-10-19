@@ -127,34 +127,14 @@ class QuotaService: ObservableObject {
     }
 
     private func fetchData() async -> QuotaState {
-        // 1. Read credentials from Keychain
-        let credentials: OAuthCredentials
-        do {
-            credentials = try KeychainService.readCredentials()
-        } catch {
-            return .error(error.localizedDescription)
+        // 1. Obtain a valid access token (own login preferred; shared token as fallback)
+        guard let activeToken = await obtainAccessToken() else {
+            // No usable token — either not signed in and the shared token is expired, or our
+            // own login was revoked. Expected idle state (offer sign-in in the UI), not an error.
+            return .idle
         }
 
-        // 2. Refresh token silently if expired
-        var activeToken = credentials.accessToken
-        if credentials.isExpired {
-            do {
-                let response = try await APIService.refreshToken(using: credentials.refreshToken)
-                let newCreds = OAuthCredentials(
-                    accessToken: response.accessToken,
-                    refreshToken: response.refreshToken ?? credentials.refreshToken,
-                    expiresAt: Date().addingTimeInterval(Double(response.expiresIn))
-                )
-                try KeychainService.writeCredentials(newCreds)
-                activeToken = newCreds.accessToken
-            } catch {
-                // Token expired and refresh failed — Claude hasn't been used recently.
-                // This is expected idle state, not an error. Claude Code will refresh
-                // its own token when used, and we'll pick it up next cycle.
-                return .idle
-            }
-        }
-        // 3. Fetch quota from API
+        // 2. Fetch quota from API
         let apiResponse: APIQuotaResponse
         do {
             apiResponse = try await APIService.fetchQuota(accessToken: activeToken)
@@ -172,6 +152,53 @@ class QuotaService: ObservableObject {
         detectWindowCycle(quotaData: quotaData)
 
         return .loaded(quotaData)
+    }
+
+    /// Return a valid access token, preferring TokenShepherd's OWN credential (self-refreshing,
+    /// independent of Claude Code) and falling back to the shared Claude Code token before the
+    /// user has signed in. Returns nil when no live token can be produced.
+    private func obtainAccessToken() async -> String? {
+        // 1. Own login (present once the user has signed in). Self-refresh; never touch the
+        //    shared Claude Code credential.
+        if let own = AuthStore.read() {
+            if !own.isExpired { return own.accessToken }
+            if let refreshed = await refresh(own, into: .own) { return refreshed }
+            // Own refresh failed → the independent login was revoked/expired (needs re-sign-in).
+            // Don't reintroduce the risky shared-token refresh; only reuse the shared token if
+            // it happens to be valid right now (read-only, zero risk to Claude Code's login).
+            if let shared = try? KeychainService.readCredentials(), !shared.isExpired {
+                return shared.accessToken
+            }
+            return nil
+        }
+
+        // 2. No own login yet — shared Claude Code token (legacy behavior). This is the ONLY
+        //    path that still refreshes the shared credential, and only when we own no login.
+        guard let shared = try? KeychainService.readCredentials() else { return nil }
+        if !shared.isExpired { return shared.accessToken }
+        return await refresh(shared, into: .shared)
+    }
+
+    private enum CredentialStore { case own, shared }
+
+    /// Refresh `creds` and persist the rotated credential to the matching store. Returns the new
+    /// access token, or nil on failure.
+    private func refresh(_ creds: OAuthCredentials, into store: CredentialStore) async -> String? {
+        do {
+            let response = try await APIService.refreshToken(using: creds.refreshToken)
+            let newCreds = OAuthCredentials(
+                accessToken: response.accessToken,
+                refreshToken: response.refreshToken ?? creds.refreshToken,
+                expiresAt: Date().addingTimeInterval(Double(response.expiresIn))
+            )
+            switch store {
+            case .own:    try AuthStore.write(newCreds)
+            case .shared: try KeychainService.writeCredentials(newCreds)
+            }
+            return newCreds.accessToken
+        } catch {
+            return nil
+        }
     }
 
     private static func bootstrapFromHistory() -> QuotaData? {

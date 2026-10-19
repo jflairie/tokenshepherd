@@ -19,3 +19,8 @@ macos/.swiftpm/
 
 # Logs
 *.log
+
+# Stray swiftc artifacts (SwiftPM builds into .build/)
+*.o
+*.d
+*.swiftdeps
