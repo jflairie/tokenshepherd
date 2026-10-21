@@ -132,7 +132,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// Keep the menu item honest about which credential is live. Understated when signed in —
     /// the critic's point: don't turn a working calm state into a "should I do something?" nag.
     private func refreshAuthItem() {
-        if AuthStore.isSignedIn {
+        // A stored credential isn't a working one: when Anthropic rejected our login, say so
+        // and make the fix one click (re-sign-in overwrites the dead credential).
+        if quotaService.health.needsReconnect {
+            authItem.title = "Reconnect account…"
+        } else if AuthStore.isSignedIn {
             authItem.title = "Signed in · Disconnect"
         } else {
             authItem.title = "Connect account (no terminal needed)…"
@@ -140,7 +144,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc private func toggleAuth() {
-        if AuthStore.isSignedIn {
+        if quotaService.health.needsReconnect {
+            startSignIn()
+        } else if AuthStore.isSignedIn {
             AuthStore.clear()
             refreshAuthItem()
             quotaService.refresh(force: true)   // fall back to shared token (or idle)
@@ -280,6 +286,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // fetches failed (or we've never synced) the sheep goes "blind" and the footer
         // states the real reason, instead of asserting the stale numbers are current.
         updateIcon()
+        refreshAuthItem()
         let dataAt: Date? = { if case .loaded(let quota) = state { return quota.fetchedAt } else { return nil } }()
         updateFooter(dataAt: dataAt)
     }
@@ -295,7 +302,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func updateIcon() {
         guard let button = statusItem.button else { return }
-        button.image = StatusBarIcon.icon(for: latestState, blind: quotaService.health.isBlind)
+        button.image = StatusBarIcon.icon(for: latestState,
+                                         blind: quotaService.health.isBlind,
+                                         needsReconnect: quotaService.health.needsReconnect)
         button.title = ""
     }
 
@@ -379,13 +388,13 @@ struct FooterView: View {
                 .font(.system(size: 10))
                 .foregroundStyle(.quaternary)
             #endif
-            if health.isBlind, health.lastFailureReason == .unreachable {
-                // Stale because we can't reach the API — state the real cause, and break
-                // the quaternary tone: a staleness alert can't be the faintest pixel.
+            if let warning {
+                // Stale for a known cause — state it, and break the quaternary tone:
+                // a staleness alert can't be the faintest pixel.
                 Image(systemName: "exclamationmark.triangle")
                     .font(.system(size: 10))
                     .foregroundStyle(.orange)
-                Text(unreachableStatus)
+                Text(warning)
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
             } else if let dataAt {
@@ -400,9 +409,18 @@ struct FooterView: View {
         .padding(.vertical, 6)
     }
 
-    private var unreachableStatus: String {
-        guard let dataAt else { return "Can't reach Anthropic" }
-        return "Can't reach Anthropic · last synced \(age(dataAt))"
+    /// Why the numbers on screen aren't live, when that's worth an alert. nil = no warning.
+    private var warning: String? {
+        let cause: String
+        if health.needsReconnect {
+            cause = "Login expired"
+        } else if health.isBlind, health.lastFailureReason == .unreachable {
+            cause = "Can't reach Anthropic"
+        } else {
+            return nil
+        }
+        guard let dataAt else { return cause }
+        return "\(cause) · last synced \(age(dataAt))"
     }
 
     private func syncedStatus(_ date: Date) -> String {

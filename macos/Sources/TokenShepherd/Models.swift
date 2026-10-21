@@ -112,7 +112,8 @@ enum QuotaState {
 /// the footer copy and tell an unreachable API apart from a genuinely idle token.
 enum FetchFailureReason: Equatable {
     case unreachable       // network error, non-2xx, or every endpoint failed
-    case waitingForClaude  // token expired and our own refresh failed
+    case waitingForClaude  // no own login, and the shared Claude Code token is expired
+    case loginRejected     // Anthropic rejected our own login's refresh — only a re-sign-in fixes it
 }
 
 /// Fetch freshness, tracked separately from the quota data so the UI can be honest
@@ -133,6 +134,12 @@ struct FetchHealth {
     /// No trustworthy current reading — cold (never synced) or failing past the threshold.
     var isBlind: Bool {
         lastSuccessAt == nil || consecutiveFailures >= Self.blindThreshold
+    }
+
+    /// Blind AND it won't recover on its own: the login is dead. Distinct from plain blind
+    /// (offline, Anthropic down) so the user knows waiting is pointless and acting isn't.
+    var needsReconnect: Bool {
+        isBlind && lastFailureReason == .loginRejected
     }
 
     static let initial = FetchHealth(lastSuccessAt: nil, consecutiveFailures: 0, lastFailureReason: nil)
