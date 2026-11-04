@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 enum APIError: Error, LocalizedError {
     case httpError(Int, String)
@@ -105,7 +106,7 @@ struct APIService {
             // 401/429 = endpoint broken, try next
             if httpResponse.statusCode == 401 || httpResponse.statusCode == 429 {
                 let body = String(data: data, encoding: .utf8) ?? ""
-                NSLog("[TokenShepherd] Endpoint %@ returned %d, trying fallback: %@", endpoint.url, httpResponse.statusCode, body)
+                Logger.shepherd.notice("endpoint \(endpoint.url, privacy: .public) returned \(httpResponse.statusCode, privacy: .public), trying fallback: \(body, privacy: .public)")
                 lastError = APIError.httpError(httpResponse.statusCode, body)
                 continue
             }

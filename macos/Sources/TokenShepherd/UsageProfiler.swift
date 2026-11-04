@@ -23,13 +23,11 @@ struct UsageProfiler {
             let prev = entries[i - 1]
             let curr = entries[i]
 
-            let prevReset = isFiveHour ? prev.fiveHourResetsAt : prev.sevenDayResetsAt
-            let currReset = isFiveHour ? curr.fiveHourResetsAt : curr.sevenDayResetsAt
-            guard datesMatchWithinTolerance(prevReset, currReset) else { continue }
+            guard let p = prev.reading(fiveHour: isFiveHour),
+                  let c = curr.reading(fiveHour: isFiveHour),
+                  datesMatchWithinTolerance(p.resetsAt, c.resetsAt) else { continue }
 
-            let prevUtil = isFiveHour ? prev.fiveHourUtil : prev.sevenDayUtil
-            let currUtil = isFiveHour ? curr.fiveHourUtil : curr.sevenDayUtil
-            let delta = currUtil - prevUtil
+            let delta = c.util - p.util
             guard delta >= 0 else { continue }
 
             let interval = curr.ts.timeIntervalSince(prev.ts)

@@ -1,4 +1,4 @@
-.PHONY: build run clean install uninstall
+.PHONY: build test run clean install uninstall
 
 APP_NAME = TokenShepherd
 APP_BUNDLE = macos/.build/$(APP_NAME).app
@@ -11,6 +11,10 @@ LAUNCHAGENT_PLIST = $(HOME)/Library/LaunchAgents/$(LAUNCHAGENT).plist
 # Build the Swift menu bar app
 build:
 	cd macos && swift build
+
+# Run unit tests
+test:
+	cd macos && swift test
 
 # Build in release mode
 release:
