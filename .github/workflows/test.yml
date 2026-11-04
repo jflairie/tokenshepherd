@@ -1,0 +1,22 @@
+name: Tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: make test
+    runs-on: macos-15
+    timeout-minutes: 10
+    env:
+      # Xcode 16.0 (16A242d): the local toolchain, which also builds releases. Upgrade Xcode → bump this.
+      DEVELOPER_DIR: /Applications/Xcode_16.0.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v7
+      - run: swift --version
+      - run: make test
