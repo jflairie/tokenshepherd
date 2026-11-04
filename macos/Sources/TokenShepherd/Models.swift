@@ -13,7 +13,7 @@ struct APIQuotaWindow: Codable {
 }
 
 struct APIQuotaResponse: Decodable {
-    let fiveHour: APIQuotaWindow?   // null since 2026-10-31, with no "session" in limits[]: no 5h limit reported
+    let fiveHour: APIQuotaWindow?   // null on plans without a 5h limit (Ultra, since 2026-10-31), with no "session" in limits[]
     let sevenDay: APIQuotaWindow?
     let limits: [APILimit]?      // per-limit array: session / weekly_all / weekly_scoped
 
@@ -95,7 +95,7 @@ struct QuotaWindow {
 }
 
 struct QuotaData {
-    let fiveHour: QuotaWindow?          // nil = Anthropic reports no 5h limit: column hidden, icon follows the weekly
+    let fiveHour: QuotaWindow?          // nil = plan has no 5h limit (Ultra): column hidden, icon follows the weekly
     let sevenDay: QuotaWindow           // weekly_all — the overall weekly ("all credits")
     let weeklyScoped: QuotaWindow?      // per-model weekly (e.g. Fable) — a popup detail, NOT in the icon
     let fetchedAt: Date

@@ -238,8 +238,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             contentItem.view = errorView
 
         case .loaded(let quota):
-            // 5h: rate + trend (session-level, recent velocity matters). Absent when Anthropic
-            // reports no 5h limit: no column, and the icon follows the weekly alone.
+            // 5h: rate + trend (session-level, recent velocity matters). Absent on plans without
+            // a 5h limit (Ultra): no column, and the icon follows the weekly alone.
             var fhState: ShepherdState?
             var fhProjection: Double?
             if let fiveHour = quota.fiveHour {

@@ -2,7 +2,7 @@ import SwiftUI
 
 struct BindingView: View {
     let quota: QuotaData
-    let fhState: ShepherdState?          // nil with quota.fiveHour: no 5h limit reported, no column
+    let fhState: ShepherdState?          // nil with quota.fiveHour: plan has no 5h limit (Ultra), no column
     let sdState: ShepherdState
     let scopedState: ShepherdState?
     let fhProjection: Double?

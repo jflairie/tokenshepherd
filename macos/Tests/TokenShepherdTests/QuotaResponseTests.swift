@@ -5,9 +5,9 @@ import XCTest
 /// a shape it misreads makes the menu claim things Anthropic never said. Fixtures are real
 /// replies, trimmed to the fields we read plus a few we don't.
 final class QuotaResponseTests: XCTestCase {
-    // 2026-11-04: no 5h limit reported — `five_hour` is null AND limits[] has no "session",
-    // while the weekly climbed 2% → 3% in use. Rejecting this left the app blind for 4 days
-    // behind a "Can't reach Anthropic" footer.
+    // Ultra plan, 2026-11-04: no 5h limit since 2026-10-31 — `five_hour` is null AND limits[]
+    // has no "session", while the weekly climbed 2% → 3% in use. Rejecting this left the app
+    // blind for 4 days behind a "Can't reach Anthropic" footer.
     private let replyWithoutFiveHour = #"""
     {
       "five_hour": null,
@@ -25,7 +25,8 @@ final class QuotaResponseTests: XCTestCase {
     }
     """#
 
-    // 2026-10-30: an idle session — reported, nothing used yet, no reset time.
+    // A plan with a 5h limit (every plan but Ultra), 2026-10-30: an idle session — reported,
+    // nothing used yet, no reset time.
     private let replyIdleSession = #"""
     {
       "five_hour": {"utilization": 0.0, "resets_at": null, "locked_reason": null},
@@ -64,6 +65,30 @@ final class QuotaResponseTests: XCTestCase {
         XCTAssertEqual(fiveHour.utilization, 0)
         XCTAssertLessThanOrEqual(fiveHour.resetsAt.timeIntervalSinceNow, 0)   // renders as "reset"
         XCTAssertEqual(quota.sevenDay.utilization, 0.38, accuracy: 0.0001)
+    }
+
+    /// A plan with a 5h limit, mid-session: the column the sheep mostly rides on. Shape of the
+    /// real 2026-10-30 reply; values from a real 2026-02-10 reading (5h 75%, weekly 60%).
+    func testFiveHourPlanMidSession() throws {
+        let reply = #"""
+        {
+          "five_hour": {"utilization": 75.0, "resets_at": "2026-02-10T12:00:00.231467+00:00"},
+          "seven_day": {"utilization": 60.0, "resets_at": "2026-02-12T12:00:00+00:00"},
+          "limits": [
+            {"kind": "session", "group": "session", "percent": 75, "severity": "normal",
+             "resets_at": "2026-02-10T12:00:00.231467+00:00", "scope": null, "is_active": true},
+            {"kind": "weekly_all", "group": "weekly", "percent": 60, "severity": "normal",
+             "resets_at": "2026-02-12T12:00:00+00:00", "scope": null, "is_active": true}
+          ]
+        }
+        """#
+        let quota = try QuotaService.mapResponse(decode(reply))
+
+        let fiveHour = try XCTUnwrap(quota.fiveHour)
+        XCTAssertEqual(fiveHour.utilization, 0.75, accuracy: 0.0001)
+        XCTAssertEqual(fiveHour.resetsAt.timeIntervalSince1970, epoch("2026-02-10T12:00:00Z"), accuracy: 1)
+        XCTAssertEqual(quota.sevenDay.utilization, 0.60, accuracy: 0.0001)
+        XCTAssertEqual(quota.sevenDay.resetsAt.timeIntervalSince1970, epoch("2026-02-12T12:00:00Z"), accuracy: 1)
     }
 
     /// Anthropic drops fields; limits[] alone carries everything we need.
