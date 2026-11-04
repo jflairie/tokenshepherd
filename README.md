@@ -23,13 +23,13 @@ If the sheep is calm, you never need to click it.
 
 ## What You See When You Click
 
-- **Pace projections** — the big numbers answer "will I run out?" for both quota windows (5h and 7d), independently colored by severity. Pace leads because it's the actionable signal. >100% means you'll get locked before reset.
+- **Pace projections** — the big numbers answer "will I run out?" for each quota window: 5h (every plan but Ultra, which has no 5-hour limit), 7d, and the per-model weekly (e.g. Fable), each colored by its own severity. Pace leads because it's the actionable signal. >100% means you'll get locked before reset.
 - **Current utilization** — grounding context below the projections. Where you are now vs. where you're heading.
 - **Reset times** — when each window resets, so you can plan around it.
 
 ## Install
 
-Requires **macOS 14+** and **Claude Code** (you can install TokenShepherd first — it'll wait until you log in).
+Requires **macOS 14+** and a Claude subscription. If Claude Code is logged in, the sheep picks that up; otherwise click it → **Connect account** (no terminal needed).
 
 1. Download `TokenShepherd.zip` from the [latest release](https://github.com/jflairie/tokenshepherd/releases/latest)
 2. Unzip and drag `TokenShepherd.app` to `/Applications`
@@ -57,6 +57,8 @@ make install
 ```
 
 Builds, signs, installs to `/Applications`, and starts automatically on login.
+
+`make test` runs the unit tests (Xcode 16, as in CI, which runs them on every PR).
 
 </details>
 
@@ -88,19 +90,23 @@ Also removes the LaunchAgent (auto-start on login).
 | Problem | Fix |
 |---|---|
 | macOS blocks the app | System Settings > Privacy & Security > Open Anyway |
-| "Waiting for Claude" | Log in to Claude Code first (`claude` in terminal) — TokenShepherd picks it up automatically |
+| "Not tracking quota" | Click **Connect account**, or log in to Claude Code (`claude` in a terminal) — TokenShepherd picks either up automatically |
 | Sheep stays calm | Working as intended — calm means your quota is fine |
+| No 5h column | You're on Ultra, which has no 5-hour limit — the sheep follows your weekly |
+| Dot on the sheep, "Can't reach Anthropic" | Offline or Anthropic is down — it recovers on its own |
+| "Can't read Anthropic's reply" | Anthropic changed its reply format — update to the latest release |
+| Orange dot, "Login expired" | Click **Reconnect account…** |
 | Doesn't start on login | Check System Settings > General > Login Items — TokenShepherd should be listed |
 
 ## Privacy
 
 Your data stays on your machine. No telemetry, no analytics, no tracking.
 
-TokenShepherd reads the OAuth token from your macOS Keychain and makes one API call to Anthropic every 60 seconds. That's it. The token stays in the Keychain: it's never written to an HTTP cache or a log.
+TokenShepherd uses an OAuth token from your macOS Keychain (Claude Code's, or its own once you connect) and calls Anthropic's usage API every 60 seconds, plus a token refresh when it expires. That's it. The token stays in the Keychain: it's never written to an HTTP cache or a log.
 
 ## Architecture
 
-See [CLAUDE.md](CLAUDE.md) for technical architecture, data flow, and design decisions.
+See [docs/architecture.md](docs/architecture.md) for data flow, state rules, and design decisions.
 
 ## Support
 

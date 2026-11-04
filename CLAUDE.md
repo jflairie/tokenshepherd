@@ -42,6 +42,6 @@ CI (`.github/workflows/test.yml`) runs `make test` on every pull request and pus
 
 - **Swift/AppKit** menu bar app (`NSStatusItem` + `NSMenu` + `NSHostingView` with SwiftUI). macOS 14+.
 - **Two surfaces:** Icon (ambient, 80% of value) and Menu (on-demand table hero).
-- **State flows:** Keychain → API → QuotaService → HistoryStore → TrendCalculator → ShepherdState (per window) → UI.
-- **Local storage:** `~/.tokenshepherd/` (history.jsonl, windows.jsonl). No data leaves your machine except the Anthropic API call.
+- **State flows:** Keychain (own login, else Claude Code's token) → API → QuotaService → HistoryStore → TrendCalculator → ShepherdState (per window) → UI.
+- **Local storage:** `~/.tokenshepherd/` (history.jsonl, windows.jsonl); the own login in the login keychain (`TokenShepherd-credentials`). No data leaves your machine except calls to Anthropic.
 - **Full reference:** `docs/architecture.md` (file structure, data flow, state table, projection logic, design decisions).

@@ -12,7 +12,11 @@ macos/Sources/TokenShepherd/
   main.swift              — AppDelegate, menu construction, ShepherdState wiring, footer
   Models.swift            — All data types (API response, domain, auth, history, trend, window summary) + shared formatTime
   DesignSystem.swift      — ShepherdState enum: single derivation point for state, color, chart color, severity
-  KeychainService.swift   — Read Claude Code OAuth token from macOS Keychain
+  KeychainService.swift   — Read Claude Code OAuth token from macOS Keychain (fallback before the user connects)
+  AuthService.swift       — Own OAuth login (PKCE), independent of the Claude Code CLI
+  AuthStore.swift         — Own credential in the login keychain (TokenShepherd-credentials), via `security`
+  SignInWindow.swift      — "Connect account" flow: browser consent → loopback redirect → code exchange, with a status window
+  LoopbackServer.swift    — Single-shot 127.0.0.1 listener that catches the OAuth redirect
   APIService.swift        — Quota GET + token refresh over URLSession.shepherd (ephemeral: nothing on disk)
   QuotaService.swift      — Orchestrator: auth → fetch → history → publish state + 60s timer; reads the API reply into domain models
   Log.swift               — os.Logger for the app (subsystem com.tokenshepherd.app) + splitting long details into parts
@@ -23,12 +27,13 @@ macos/Sources/TokenShepherd/
   StatsCache.swift        — Reads ~/.claude/stats-cache.json for token summary (today/yesterday/7d counts + dominant model)
   BindingView.swift       — SwiftUI: table-layout hero (Pace/Now/Resets rows × 5h (when reported)/7d/per-model columns)
   StatusBarIcon.swift     — Sheep-only icon: idle(dimmed)/calm/tinted/dead, no suffix text
+macos/Tests/TokenShepherdTests/ — `make test`, run by CI (`.github/workflows/test.yml`) on every PR
 ```
 
 ## Data Flow
 
 ```
-KeychainService → OAuthCredentials
+AuthStore (own login, self-refreshed) or else KeychainService (Claude Code's token) → OAuthCredentials
   → APIService.fetchQuota(token) → reply body
   → QuotaService.readReply → domain models → @Published QuotaState
   → Combine sink:
@@ -37,7 +42,7 @@ KeychainService → OAuthCredentials
     → 7d: UsageProfiler.projectAtReset() (hourly profile, time-of-day aware) or rate-based fallback
     → Per-window ShepherdState.from() → independent coloring
     → Icon = worst state (by severity)
-    → BindingView (table hero: Pace/Now/Resets × 5h/7d)
+    → BindingView (table hero: Pace/Now/Resets × 5h when reported/7d/per-model)
     → StatusBarIcon (sheep: idle/calm/tinted/dead based on worst state)
 ```
 
@@ -75,7 +80,9 @@ All in `~/.tokenshepherd/`:
 - `history.jsonl` — utilization snapshots every 60s, pruned to 7 days. The `fiveHour*` keys are omitted when no 5h limit was reported.
 - `windows.jsonl` — summary of completed window cycles (peak, avg rate, was locked)
 
-No data leaves your machine except the API call to Anthropic.
+Plus one login keychain item, `TokenShepherd-credentials`: the own OAuth login, once the user connects.
+
+No data leaves your machine except calls to Anthropic: the usage API every 60s, plus sign-in and token refresh.
 
 ## Design Decisions
 
@@ -83,10 +90,9 @@ No data leaves your machine except the API call to Anthropic.
 - **Sheep-only icon:** No text suffix in menu bar. Sheep emoji flipped via CGContext transform. Calm = `isTemplate: false` (plain emoji). Tinted = `.sourceAtop` blend at 60% alpha for vibrancy. Dead = flipped vertically + 50% alpha + red cross overlay.
 - **Worst-window icon:** Icon sheep reflects whichever window has highest severity. `ShepherdState.severity` property (-1=idle → 4=locked) determines ordering.
 - **Expired window handling:** Expired column shows "—" / "reset" muted. When all expired, hero shows "Standing by" + model label ("No live reading" when blind). Updates naturally when API sends fresh window.
-- **Stale data preservation:** When token expires and refresh fails, keep showing last known quota data. On restart, bootstrap from last history entry. Only truly-no-data case (first ever launch + expired token) shows "Waiting for Claude."
+- **Stale data preservation:** When token expires and refresh fails, keep showing last known quota data. On restart, bootstrap from last history entry. With no data at all, a missing or dead login shows "Not tracking quota" + Connect account; an unreachable or unreadable Anthropic shows the error view.
 - **Dead sheep:** Locked column shows "LOCKED" + "back HH:MM" in red, pace shows em-dash. Icon shows inverted sheep at 50% opacity with red cross overlay for worst-window locked.
-- **Width:** 280px for hero content. Footer at 252px.
-- **Footer:** Sync status only ("Synced" when < 90s, "Synced Xm/Xh/Xd ago" when stale). Quaternary styling — metadata, not content. Stale data re-publishes every 60s to keep the label current.
+- **Footer:** Sync status ("Synced" when < 90s, "Synced Xm/Xh/Xd ago" when stale). Quaternary styling — metadata, not content. When blind it becomes an orange-triangle warning naming the cause (see below). Stale data re-publishes every 60s to keep the label current.
 - **Blind vs needs-reconnect:** After 3 failed fetches the sheep gets a corner dot ("not live"). Dark dot = not live, and reconnecting the account won't help: offline or API down (footer "Can't reach Anthropic"), a reply we can't use (footer "Can't read Anthropic's reply" — needs a code fix, not a retry), or waiting for Claude Code's token. Orange dot = Anthropic rejected our own login's refresh (4xx) — it won't recover; footer says "Login expired", the auth item becomes "Reconnect account…".
 - **Logging:** `os.Logger` (`Log.swift`), never NSLog — the unified log redacts NSLog text to `<private>`, which hid every failure reason. Details are interpolated `privacy: .public` (never a token or a header). Each failure streak and reason change is logged with its HTTP status/body, or for a reply we can't use, its decode path plus the reply body verbatim: with no disk cache, the log is the only record of what Anthropic sent. The log cuts each message at ~1 KB and a usage reply runs ~2.2 KB, so the detail goes out in numbered parts (`fetch failed (unreadable) 1/3: …`); join them in order. `/usr/bin/log show --predicate 'subsystem == "com.tokenshepherd.app"' --last 1d` (full path: in zsh, bare `log` is a builtin).
 - **No disk cache for token-bearing calls:** Every call that sends or returns a token goes through `URLSession.shepherd`, an ephemeral session. `URLSession.shared` kept each usage GET, `Authorization: Bearer` header included, in `~/Library/Caches/com.tokenshepherd.app/Cache.db` and its WAL. Ephemeral rather than `urlCache = nil`, which would still write cookies to `~/Library/HTTPStorages`. Replies carry no freshness headers, so the session's memory cache never replays a quota. Each launch deletes the old cache directory (a no-op once it's gone): it reaches every install with no step for the user, and removing the files takes the WAL with them.
