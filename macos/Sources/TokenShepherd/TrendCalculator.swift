@@ -17,8 +17,8 @@ struct TrendCalculator {
         let spanSeconds = last.ts.timeIntervalSince(first.ts)
         guard spanSeconds >= 300 else { return nil }  // 5 min minimum
 
-        let firstUtil = isFiveHour ? first.fiveHourUtil : first.sevenDayUtil
-        let lastUtil = isFiveHour ? last.fiveHourUtil : last.sevenDayUtil
+        guard let firstUtil = first.reading(fiveHour: isFiveHour)?.util,
+              let lastUtil = last.reading(fiveHour: isFiveHour)?.util else { return nil }
         let delta = lastUtil - firstUtil
         let velocityPerHour = delta / (spanSeconds / 3600)
 

@@ -2,15 +2,16 @@ import SwiftUI
 
 struct BindingView: View {
     let quota: QuotaData
-    let fhState: ShepherdState
+    let fhState: ShepherdState?          // nil with quota.fiveHour: no 5h limit reported, no column
     let sdState: ShepherdState
     let scopedState: ShepherdState?
     let fhProjection: Double?
     let sdProjection: Double?
     let scopedProjection: Double?
     let tokenSummary: TokenSummary?
+    let isBlind: Bool                    // no live reading: never synced, or failing past the threshold
 
-    private var fhExpired: Bool { quota.fiveHour.resetsAt.timeIntervalSinceNow <= 0 }
+    private var fhExpired: Bool { (quota.fiveHour?.resetsAt.timeIntervalSinceNow ?? -1) <= 0 }
     private var sdExpired: Bool { quota.sevenDay.resetsAt.timeIntervalSinceNow <= 0 }
     private var scopedExpired: Bool { (quota.weeklyScoped?.resetsAt.timeIntervalSinceNow ?? -1) <= 0 }
     private var allExpired: Bool { fhExpired && sdExpired && scopedExpired }
@@ -36,7 +37,9 @@ struct BindingView: View {
     @ViewBuilder
     private var expiredHero: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("Standing by")
+            // Blind, the windows on screen expired since the last sync: a new one may be running
+            // unseen, so don't claim calm. The footer says why there's no reading.
+            Text(isBlind ? "No live reading" : "Standing by")
                 .font(.system(size: 20, weight: .semibold, design: .rounded))
                 .foregroundStyle(.secondary)
             modelLabel
@@ -53,10 +56,12 @@ struct BindingView: View {
         HStack(spacing: 0) {
             Text("")
                 .frame(width: labelWidth, alignment: .leading)
-            Text("5h")
-                .font(.system(.caption2, weight: .semibold))
-                .foregroundStyle(.tertiary)
-                .frame(maxWidth: .infinity)
+            if quota.fiveHour != nil {
+                Text("5h")
+                    .font(.system(.caption2, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+                    .frame(maxWidth: .infinity)
+            }
             Text("7d")
                 .font(.system(.caption2, weight: .semibold))
                 .foregroundStyle(.tertiary)
@@ -87,8 +92,10 @@ struct BindingView: View {
             }
             .foregroundStyle(.tertiary)
             .frame(width: labelWidth, alignment: .leading)
-            paceCell(window: quota.fiveHour, state: fhState, projection: fhProjection, expired: fhExpired)
-                .frame(maxWidth: .infinity)
+            if let fiveHour = quota.fiveHour {
+                paceCell(window: fiveHour, state: fhState ?? .calm, projection: fhProjection, expired: fhExpired)
+                    .frame(maxWidth: .infinity)
+            }
             paceCell(window: quota.sevenDay, state: sdState, projection: sdProjection, expired: sdExpired)
                 .frame(maxWidth: .infinity)
             if let scoped = quota.weeklyScoped {
@@ -103,8 +110,10 @@ struct BindingView: View {
                 .font(.system(.caption2, weight: .medium))
                 .foregroundStyle(.tertiary)
                 .frame(width: labelWidth, alignment: .leading)
-            nowCell(window: quota.fiveHour, state: fhState, expired: fhExpired)
-                .frame(maxWidth: .infinity)
+            if let fiveHour = quota.fiveHour {
+                nowCell(window: fiveHour, state: fhState ?? .calm, expired: fhExpired)
+                    .frame(maxWidth: .infinity)
+            }
             nowCell(window: quota.sevenDay, state: sdState, expired: sdExpired)
                 .frame(maxWidth: .infinity)
             if let scoped = quota.weeklyScoped {
@@ -119,8 +128,10 @@ struct BindingView: View {
                 .font(.system(.caption2, weight: .medium))
                 .foregroundStyle(.tertiary)
                 .frame(width: labelWidth, alignment: .leading)
-            resetsCell(window: quota.fiveHour, state: fhState, expired: fhExpired)
-                .frame(maxWidth: .infinity)
+            if let fiveHour = quota.fiveHour {
+                resetsCell(window: fiveHour, state: fhState ?? .calm, expired: fhExpired)
+                    .frame(maxWidth: .infinity)
+            }
             resetsCell(window: quota.sevenDay, state: sdState, expired: sdExpired)
                 .frame(maxWidth: .infinity)
             if let scoped = quota.weeklyScoped {

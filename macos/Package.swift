@@ -15,6 +15,11 @@ let package = Package(
             swiftSettings: [
                 .define("DEBUG", .when(configuration: .debug))
             ]
+        ),
+        .testTarget(
+            name: "TokenShepherdTests",
+            dependencies: ["TokenShepherd"],
+            path: "Tests/TokenShepherdTests"
         )
     ]
 )

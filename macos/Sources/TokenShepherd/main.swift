@@ -2,6 +2,7 @@ import AppKit
 import SwiftUI
 import Combine
 import ServiceManagement
+import os
 
 @MainActor
 class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
@@ -24,9 +25,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if service.status != .enabled {
             do {
                 try service.register()
-                NSLog("[TokenShepherd] Registered as login item")
+                Logger.shepherd.notice("registered as login item")
             } catch {
-                NSLog("[TokenShepherd] Failed to register as login item: \(error)")
+                Logger.shepherd.error("failed to register as login item: \(String(describing: error), privacy: .public)")
             }
         }
     }
@@ -43,7 +44,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
 
         guard let button = statusItem.button else {
-            NSLog("[TokenShepherd] ERROR: no status item button")
+            Logger.shepherd.fault("no status item button")
             return
         }
 
@@ -115,7 +116,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
 
         quotaService.refresh()
-        NSLog("[TokenShepherd] Ready")
+        Logger.shepherd.notice("ready")
     }
 
     func menuWillOpen(_ menu: NSMenu) {
@@ -237,19 +238,21 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             contentItem.view = errorView
 
         case .loaded(let quota):
-            let fiveHourPace = PaceCalculator.pace(for: quota.fiveHour, windowDuration: PaceCalculator.fiveHourDuration)
-            let sevenDayPace = PaceCalculator.pace(for: quota.sevenDay, windowDuration: PaceCalculator.sevenDayDuration)
-
-            // 5h: rate + trend (session-level, recent velocity matters)
-            let fhEntries = HistoryStore.readForWindow(resetsAt: quota.fiveHour.resetsAt, isFiveHour: true)
-            let fhTrend = TrendCalculator.trend(entries: fhEntries, isFiveHour: true)
-            let fhProjection = projectAtReset(window: quota.fiveHour, windowDuration: PaceCalculator.fiveHourDuration, trend: fhTrend)
+            // 5h: rate + trend (session-level, recent velocity matters). Absent when Anthropic
+            // reports no 5h limit: no column, and the icon follows the weekly alone.
+            var fhState: ShepherdState?
+            var fhProjection: Double?
+            if let fiveHour = quota.fiveHour {
+                let fiveHourPace = PaceCalculator.pace(for: fiveHour, windowDuration: PaceCalculator.fiveHourDuration)
+                let fhEntries = HistoryStore.readForWindow(resetsAt: fiveHour.resetsAt, isFiveHour: true)
+                let fhTrend = TrendCalculator.trend(entries: fhEntries, isFiveHour: true)
+                fhProjection = projectAtReset(window: fiveHour, windowDuration: PaceCalculator.fiveHourDuration, trend: fhTrend)
+                fhState = ShepherdState.from(window: fiveHour, pace: fiveHourPace, projectedAtReset: fhProjection)
+            }
 
             // 7d: hourly usage profile (time-of-day aware), rate-based fallback
+            let sevenDayPace = PaceCalculator.pace(for: quota.sevenDay, windowDuration: PaceCalculator.sevenDayDuration)
             let sdProjection = projectSevenDay(window: quota.sevenDay)
-
-            // Per-window state (independent coloring)
-            let fhState = ShepherdState.from(window: quota.fiveHour, pace: fiveHourPace, projectedAtReset: fhProjection)
             let sdState = ShepherdState.from(window: quota.sevenDay, pace: sevenDayPace, projectedAtReset: sdProjection)
             // Per-model weekly (Fable) — full column: rate-based Pace + its own state.
             // Still display-only: it does NOT drive the icon.
@@ -266,7 +269,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
             // Icon = worst of 5h + weekly_all ("all credits" / total lockout). The per-model
             // weekly is intentionally EXCLUDED — hitting it means "switch models", not lockout.
-            latestState = fhState.severity >= sdState.severity ? fhState : sdState
+            if let fhState, fhState.severity >= sdState.severity {
+                latestState = fhState
+            } else {
+                latestState = sdState
+            }
 
             let heroView = NSHostingView(rootView: BindingView(
                 quota: quota,
@@ -276,7 +283,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 fhProjection: fhProjection,
                 sdProjection: sdProjection,
                 scopedProjection: scopedProjection,
-                tokenSummary: cachedTokenSummary
+                tokenSummary: cachedTokenSummary,
+                isBlind: quotaService.health.isBlind
             ))
             heroView.frame.size = heroView.fittingSize
             contentItem.view = heroView
@@ -416,6 +424,8 @@ struct FooterView: View {
             cause = "Login expired"
         } else if health.isBlind, health.lastFailureReason == .unreachable {
             cause = "Can't reach Anthropic"
+        } else if health.isBlind, health.lastFailureReason == .unreadable {
+            cause = "Can't read Anthropic's reply"   // it answered; the app needs a fix, not a retry
         } else {
             return nil
         }
