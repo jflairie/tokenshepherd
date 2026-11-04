@@ -13,8 +13,8 @@ struct APIQuotaWindow: Codable {
 }
 
 struct APIQuotaResponse: Decodable {
-    let fiveHour: APIQuotaWindow
-    let sevenDay: APIQuotaWindow
+    let fiveHour: APIQuotaWindow?   // null on plans without a 5h limit (Ultra, since 2026-10-31), with no "session" in limits[]
+    let sevenDay: APIQuotaWindow?
     let limits: [APILimit]?      // per-limit array: session / weekly_all / weekly_scoped
 
     enum CodingKeys: String, CodingKey {
@@ -25,8 +25,10 @@ struct APIQuotaResponse: Decodable {
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        fiveHour = try c.decode(APIQuotaWindow.self, forKey: .fiveHour)
-        sevenDay = try c.decode(APIQuotaWindow.self, forKey: .sevenDay)
+        // Null or absent = not reported. Whether the reply is usable (it must give the weekly
+        // from some source) is decided in QuotaService.mapResponse, not by which keys exist.
+        fiveHour = try c.decodeIfPresent(APIQuotaWindow.self, forKey: .fiveHour)
+        sevenDay = try c.decodeIfPresent(APIQuotaWindow.self, forKey: .sevenDay)
         // Lossy on purpose: a missing or malformed `limits` array must never break the
         // core response — we simply fall back to the legacy five_hour/seven_day fields.
         limits = try? c.decode([APILimit].self, forKey: .limits)
@@ -93,7 +95,7 @@ struct QuotaWindow {
 }
 
 struct QuotaData {
-    let fiveHour: QuotaWindow
+    let fiveHour: QuotaWindow?          // nil = plan has no 5h limit (Ultra): column hidden, icon follows the weekly
     let sevenDay: QuotaWindow           // weekly_all — the overall weekly ("all credits")
     let weeklyScoped: QuotaWindow?      // per-model weekly (e.g. Fable) — a popup detail, NOT in the icon
     let fetchedAt: Date
@@ -112,7 +114,9 @@ enum QuotaState {
 /// the footer copy and tell an unreachable API apart from a genuinely idle token.
 enum FetchFailureReason: Equatable {
     case unreachable       // network error, non-2xx, or every endpoint failed
-    case waitingForClaude  // token expired and our own refresh failed
+    case unreadable        // Anthropic answered, but in a shape we can't decode — waiting won't fix it
+    case waitingForClaude  // no own login, and the shared Claude Code token is expired
+    case loginRejected     // Anthropic rejected our own login's refresh — only a re-sign-in fixes it
 }
 
 /// Fetch freshness, tracked separately from the quota data so the UI can be honest
@@ -133,6 +137,12 @@ struct FetchHealth {
     /// No trustworthy current reading — cold (never synced) or failing past the threshold.
     var isBlind: Bool {
         lastSuccessAt == nil || consecutiveFailures >= Self.blindThreshold
+    }
+
+    /// Blind AND it won't recover on its own: the login is dead. Distinct from plain blind
+    /// (offline, Anthropic down) so the user knows waiting is pointless and acting isn't.
+    var needsReconnect: Bool {
+        isBlind && lastFailureReason == .loginRejected
     }
 
     static let initial = FetchHealth(lastSuccessAt: nil, consecutiveFailures: 0, lastFailureReason: nil)
@@ -161,10 +171,17 @@ func datesMatchWithinTolerance(_ a: Date, _ b: Date, tolerance: TimeInterval = 6
 
 struct HistoryEntry: Codable {
     let ts: Date
-    let fiveHourUtil: Double
+    let fiveHourUtil: Double?       // nil (key omitted) when Anthropic reported no 5h window
     let sevenDayUtil: Double
-    let fiveHourResetsAt: Date
+    let fiveHourResetsAt: Date?
     let sevenDayResetsAt: Date
+
+    /// One window's reading in this snapshot; nil for a 5h window that wasn't reported.
+    func reading(fiveHour: Bool) -> (util: Double, resetsAt: Date)? {
+        guard fiveHour else { return (sevenDayUtil, sevenDayResetsAt) }
+        guard let fiveHourUtil, let fiveHourResetsAt else { return nil }
+        return (fiveHourUtil, fiveHourResetsAt)
+    }
 }
 
 // MARK: - Trend

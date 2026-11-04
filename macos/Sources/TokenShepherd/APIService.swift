@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 enum APIError: Error, LocalizedError {
     case httpError(Int, String)
@@ -45,11 +46,14 @@ struct APIService {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("tokenshepherd/0.1.0", forHTTPHeaderField: "User-Agent")
 
+        // No `scope` param on refresh: narrowing to a subset would mint a token missing the
+        // other granted scopes. That's both why the shared-token refresh was flaky AND a
+        // hazard — writing a scope-stripped token back to `Claude Code-credentials` could
+        // cripple Claude Code. Omitting scope preserves the original grant.
         let body: [String: String] = [
             "grant_type": "refresh_token",
             "refresh_token": refreshToken,
-            "client_id": "9d1c250a-e61b-44e4-8ea0-81d4c0e3a3e8",
-            "scope": "user:inference"
+            "client_id": AuthService.clientID
         ]
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
@@ -102,7 +106,7 @@ struct APIService {
             // 401/429 = endpoint broken, try next
             if httpResponse.statusCode == 401 || httpResponse.statusCode == 429 {
                 let body = String(data: data, encoding: .utf8) ?? ""
-                NSLog("[TokenShepherd] Endpoint %@ returned %d, trying fallback: %@", endpoint.url, httpResponse.statusCode, body)
+                Logger.shepherd.notice("endpoint \(endpoint.url, privacy: .public) returned \(httpResponse.statusCode, privacy: .public), trying fallback: \(body, privacy: .public)")
                 lastError = APIError.httpError(httpResponse.statusCode, body)
                 continue
             }

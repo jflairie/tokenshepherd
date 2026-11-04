@@ -5,12 +5,14 @@ struct StatusBarIcon {
     private static let attrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 16)]
     private static let sheepSize = sheepEmoji.size(withAttributes: attrs)
 
-    static func icon(for state: ShepherdState, blind: Bool = false) -> NSImage {
+    static func icon(for state: ShepherdState, blind: Bool = false, needsReconnect: Bool = false) -> NSImage {
         // Blind = no trustworthy current reading (stale or cold). Preserve the quota
         // color (a stale-red sheep stays red — never mute the loudest alarm) and flag
         // "not live" with a corner status dot. Brightness alone is not discriminable
         // from the idle/dead sheep at 16pt, so we separate on shape, not alpha.
-        if blind { return renderBlind(tint: tint(for: state)) }
+        // needsReconnect turns the dot orange: dark = "will recover on its own",
+        // orange = "dead until you act" — waiting is the wrong response to the latter.
+        if blind { return renderBlind(tint: tint(for: state), needsReconnect: needsReconnect) }
         switch state {
         case .idle:              return renderIdle()
         case .calm:              return renderCalm()
@@ -58,7 +60,7 @@ struct StatusBarIcon {
         }
     }
 
-    private static func renderBlind(tint: NSColor?) -> NSImage {
+    private static func renderBlind(tint: NSColor?, needsReconnect: Bool) -> NSImage {
         renderSheep { ctx, size in
             // Upright sheep (same orientation as calm), quota color preserved.
             ctx.saveGState()
@@ -81,7 +83,8 @@ struct StatusBarIcon {
             let cy = size.height - r - 0.5
             ctx.setFillColor(NSColor.white.withAlphaComponent(0.95).cgColor)
             ctx.fillEllipse(in: CGRect(x: cx - r - 1, y: cy - r - 1, width: 2 * (r + 1), height: 2 * (r + 1)))
-            ctx.setFillColor(NSColor(white: 0.25, alpha: 1).cgColor)
+            let core = needsReconnect ? NSColor.systemOrange : NSColor(white: 0.25, alpha: 1)
+            ctx.setFillColor(core.cgColor)
             ctx.fillEllipse(in: CGRect(x: cx - r, y: cy - r, width: 2 * r, height: 2 * r))
         }
     }

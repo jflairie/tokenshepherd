@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 struct HistoryStore {
     private static let directoryURL = FileManager.default.homeDirectoryForCurrentUser
@@ -8,9 +9,9 @@ struct HistoryStore {
     static func append(from quota: QuotaData) {
         let entry = HistoryEntry(
             ts: quota.fetchedAt,
-            fiveHourUtil: quota.fiveHour.utilization,
+            fiveHourUtil: quota.fiveHour?.utilization,
             sevenDayUtil: quota.sevenDay.utilization,
-            fiveHourResetsAt: quota.fiveHour.resetsAt,
+            fiveHourResetsAt: quota.fiveHour?.resetsAt,
             sevenDayResetsAt: quota.sevenDay.resetsAt
         )
 
@@ -31,7 +32,7 @@ struct HistoryStore {
                 try line.write(to: fileURL, atomically: true, encoding: .utf8)
             }
         } catch {
-            NSLog("[TokenShepherd] History write error: \(error.localizedDescription)")
+            Logger.shepherd.error("history write error: \(error.localizedDescription, privacy: .public)")
         }
     }
 
@@ -78,9 +79,9 @@ struct HistoryStore {
             }
             try lines.joined(separator: "\n").appending("\n")
                 .write(to: fileURL, atomically: true, encoding: .utf8)
-            NSLog("[TokenShepherd] Pruned history to \(entries.count) entries")
+            Logger.shepherd.notice("pruned history to \(entries.count, privacy: .public) entries")
         } catch {
-            NSLog("[TokenShepherd] History prune error: \(error.localizedDescription)")
+            Logger.shepherd.error("history prune error: \(error.localizedDescription, privacy: .public)")
         }
     }
 
@@ -91,8 +92,8 @@ struct HistoryStore {
         since: Date = Date.distantPast
     ) -> [HistoryEntry] {
         read(since: since).filter { entry in
-            let entryResetsAt = isFiveHour ? entry.fiveHourResetsAt : entry.sevenDayResetsAt
-            return datesMatchWithinTolerance(entryResetsAt, resetsAt)
+            guard let reading = entry.reading(fiveHour: isFiveHour) else { return false }
+            return datesMatchWithinTolerance(reading.resetsAt, resetsAt)
         }
     }
 }
@@ -122,7 +123,7 @@ struct WindowSummaryStore {
                 try line.write(to: fileURL, atomically: true, encoding: .utf8)
             }
         } catch {
-            NSLog("[TokenShepherd] Window summary write error: \(error.localizedDescription)")
+            Logger.shepherd.error("window summary write error: \(error.localizedDescription, privacy: .public)")
         }
     }
 }
