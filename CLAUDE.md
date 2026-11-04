@@ -14,6 +14,8 @@ make dist       # Release build + sign + zip for distribution
 make clean      # Clean Swift build artifacts
 ```
 
+CI (`.github/workflows/test.yml`) runs `make test` on every pull request and push to `main`, on `macos-15` with Xcode 16.0, the local toolchain. Upgrade Xcode locally → bump `DEVELOPER_DIR` in the workflow.
+
 ## Always Do
 
 - Read `docs/architecture.md` before modifying any file — understand data flow and state derivation first.
