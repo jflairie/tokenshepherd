@@ -95,7 +95,7 @@ enum AuthService {
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await URLSession.shared.data(for: request)
+            (data, response) = try await URLSession.shepherd.data(for: request)
         } catch {
             throw AuthError.network(error.localizedDescription)
         }

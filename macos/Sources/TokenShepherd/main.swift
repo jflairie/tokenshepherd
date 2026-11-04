@@ -108,6 +108,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         // Housekeeping
         HistoryStore.prune()
+        URLSession.removeOldDiskCache()
 
         // Load token summary from Claude Code stats
         cachedTokenSummary = StatsCache.tokenSummary()

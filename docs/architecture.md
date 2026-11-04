@@ -13,9 +13,9 @@ macos/Sources/TokenShepherd/
   Models.swift            — All data types (API response, domain, auth, history, trend, window summary) + shared formatTime
   DesignSystem.swift      — ShepherdState enum: single derivation point for state, color, chart color, severity
   KeychainService.swift   — Read Claude Code OAuth token from macOS Keychain
-  APIService.swift        — URLSession GET to Anthropic quota API + token refresh
-  QuotaService.swift      — Orchestrator: auth → fetch → history → publish state + 60s timer; maps the API reply to domain models
-  Log.swift               — os.Logger for the app (subsystem com.tokenshepherd.app)
+  APIService.swift        — Quota GET + token refresh over URLSession.shepherd (ephemeral: nothing on disk)
+  QuotaService.swift      — Orchestrator: auth → fetch → history → publish state + 60s timer; reads the API reply into domain models
+  Log.swift               — os.Logger for the app (subsystem com.tokenshepherd.app) + splitting long details into parts
   PaceCalculator.swift    — Pace projection, time-to-limit, limitAt formatting
   TrendCalculator.swift   — Velocity from history (5h trend-based projection input)
   UsageProfiler.swift     — Hourly consumption profile from history (7d time-of-day aware projection)
@@ -29,8 +29,8 @@ macos/Sources/TokenShepherd/
 
 ```
 KeychainService → OAuthCredentials
-  → APIService.fetchQuota(token) → APIQuotaResponse
-  → QuotaService → domain models → @Published QuotaState
+  → APIService.fetchQuota(token) → reply body
+  → QuotaService.readReply → domain models → @Published QuotaState
   → Combine sink:
     → HistoryStore.append() → ~/.tokenshepherd/history.jsonl
     → 5h: readForWindow() → TrendCalculator → trend → projectAtReset() (rate + trend, reactive)
@@ -88,7 +88,8 @@ No data leaves your machine except the API call to Anthropic.
 - **Width:** 280px for hero content. Footer at 252px.
 - **Footer:** Sync status only ("Synced" when < 90s, "Synced Xm/Xh/Xd ago" when stale). Quaternary styling — metadata, not content. Stale data re-publishes every 60s to keep the label current.
 - **Blind vs needs-reconnect:** After 3 failed fetches the sheep gets a corner dot ("not live"). Dark dot = not live, and reconnecting the account won't help: offline or API down (footer "Can't reach Anthropic"), a reply we can't use (footer "Can't read Anthropic's reply" — needs a code fix, not a retry), or waiting for Claude Code's token. Orange dot = Anthropic rejected our own login's refresh (4xx) — it won't recover; footer says "Login expired", the auth item becomes "Reconnect account…".
-- **Logging:** `os.Logger` (`Log.swift`), never NSLog — the unified log redacts NSLog text to `<private>`, which hid every failure reason. Details are interpolated `privacy: .public` (never a token). Each failure streak and reason change is logged with its HTTP status/body or decode path: `/usr/bin/log show --predicate 'subsystem == "com.tokenshepherd.app"' --last 1d` (full path: in zsh, bare `log` is a builtin).
+- **Logging:** `os.Logger` (`Log.swift`), never NSLog — the unified log redacts NSLog text to `<private>`, which hid every failure reason. Details are interpolated `privacy: .public` (never a token or a header). Each failure streak and reason change is logged with its HTTP status/body, or for a reply we can't use, its decode path plus the reply body verbatim: with no disk cache, the log is the only record of what Anthropic sent. The log cuts each message at ~1 KB and a usage reply runs ~2.2 KB, so the detail goes out in numbered parts (`fetch failed (unreadable) 1/3: …`); join them in order. `/usr/bin/log show --predicate 'subsystem == "com.tokenshepherd.app"' --last 1d` (full path: in zsh, bare `log` is a builtin).
+- **No disk cache for token-bearing calls:** Every call that sends or returns a token goes through `URLSession.shepherd`, an ephemeral session. `URLSession.shared` kept each usage GET, `Authorization: Bearer` header included, in `~/Library/Caches/com.tokenshepherd.app/Cache.db` and its WAL. Ephemeral rather than `urlCache = nil`, which would still write cookies to `~/Library/HTTPStorages`. Replies carry no freshness headers, so the session's memory cache never replays a quota. Each launch deletes the old cache directory (a no-op once it's gone): it reaches every install with no step for the user, and removing the files takes the WAL with them.
 - **Reading the reply (Ultra and every other plan):** Since 2026-10-31 the Ultra plan has no 5h limit; other plans keep it. An Ultra reply has `"five_hour": null` and no `session` entry in `limits[]`, even while the weekly climbs. Unreported (null or absent) → `QuotaData.fiveHour == nil`: no 5h column, icon follows the weekly. A plan change shows up on the next fetch, no setting needed. A reported window with a null `resets_at` (an idle session) still maps to "resets now". A reply is usable when it gives the weekly from `limits[weekly_all]` or `seven_day`; otherwise `mapResponse` throws and the footer says "Can't read Anthropic's reply". Which keys exist proves nothing. `resets_at` comes with and without fractional seconds. All pinned against real replies in `macos/Tests/` (`make test`).
 - **No Hardened Runtime, no entitlements:** Ad-hoc signed with plain `codesign --sign -`. Hardened Runtime and sandbox entitlements trigger ghost TCC prompts (Photos, Apple Music, network volume, Desktop) on non-notarized apps. Plain ad-hoc signature is sufficient.
 - **No subprocess spawning:** Token refresh was previously done by spawning `claude --print "hi"`, but macOS attributes child process TCC accesses to the parent. Claude CLI touches protected directories during init → Desktop/Photos/Music prompts blamed on TokenShepherd. Now we just wait — Claude Code refreshes its own token, we re-read the keychain next cycle.
