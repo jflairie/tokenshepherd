@@ -9,6 +9,7 @@ make run        # Build, sign, bundle as .app, launch (dev)
 make install    # Release build → /Applications + LaunchAgent (auto-start on login)
 make uninstall  # Remove from /Applications + LaunchAgent
 make build      # Build Swift binary only
+make test       # Unit tests (API reply decoding/mapping, pinned to real replies)
 make dist       # Release build + sign + zip for distribution
 make clean      # Clean Swift build artifacts
 ```
@@ -31,6 +32,7 @@ make clean      # Clean Swift build artifacts
 - Never spawn subprocesses (e.g., `claude --print`) — macOS attributes child TCC accesses to parent.
 - Never use `SecItemCopyMatching` — use `security find-generic-password` instead.
 - Never launch the binary directly in LaunchAgent — use `open -W` for proper macOS app context.
+- Never use `NSLog` — the unified log redacts its text to `<private>`. Use `Logger.shepherd` with `privacy: .public` (never on a token).
 - Never skip `launchctl unload` before reinstalling — KeepAlive restarts the app mid-install.
 
 ## Architecture (Brief)

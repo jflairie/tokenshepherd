@@ -3,7 +3,7 @@
 ## Two Surfaces
 
 1. **Icon (ambient)** — Sheep only, no text. Idle = dimmed (35% opacity). Calm = plain (template). Orange = trajectory/warm. Red = low. Dead (flipped, 50% opacity, red cross overlay) = locked. 80% of the value lives here.
-2. **Menu (on demand)** — Dual-window table hero (both 5h and 7d, independently colored), sync status footer.
+2. **Menu (on demand)** — Table hero (5h when Anthropic reports one, 7d, per-model weekly; each independently colored), sync status footer.
 
 ## File Structure
 
@@ -14,13 +14,14 @@ macos/Sources/TokenShepherd/
   DesignSystem.swift      — ShepherdState enum: single derivation point for state, color, chart color, severity
   KeychainService.swift   — Read Claude Code OAuth token from macOS Keychain
   APIService.swift        — URLSession GET to Anthropic quota API + token refresh
-  QuotaService.swift      — Orchestrator: auth → fetch → history → publish state + 60s timer
+  QuotaService.swift      — Orchestrator: auth → fetch → history → publish state + 60s timer; maps the API reply to domain models
+  Log.swift               — os.Logger for the app (subsystem com.tokenshepherd.app)
   PaceCalculator.swift    — Pace projection, time-to-limit, limitAt formatting
   TrendCalculator.swift   — Velocity from history (5h trend-based projection input)
   UsageProfiler.swift     — Hourly consumption profile from history (7d time-of-day aware projection)
   HistoryStore.swift      — JSONL append/read/prune + window summaries (WindowSummaryStore)
   StatsCache.swift        — Reads ~/.claude/stats-cache.json for token summary (today/yesterday/7d counts + dominant model)
-  BindingView.swift       — SwiftUI: table-layout hero (Pace/Now/Resets rows × 5h/7d columns)
+  BindingView.swift       — SwiftUI: table-layout hero (Pace/Now/Resets rows × 5h (when reported)/7d/per-model columns)
   StatusBarIcon.swift     — Sheep-only icon: idle(dimmed)/calm/tinted/dead, no suffix text
 ```
 
@@ -57,7 +58,8 @@ KeychainService → OAuthCredentials
 
 Row labels (Pace/Now/Resets) on the left, 5h and 7d columns on the right. Pace row leads — 22pt bold projection numbers, always colored by per-window state. Now row shows current utilization as grounding context. Resets row shows time.
 
-- When both windows expired → "Standing by" (dimmed).
+- A column exists only for a window Anthropic reports: Ultra has no 5h limit → no 5h column (like the per-model column), never a "reset" it didn't say. Every other plan keeps the 5h column.
+- When every shown window expired → "Standing by" (dimmed). If blind (no live reading), "No live reading" instead: a new window may be running unseen, so the hero can't claim calm.
 - Pace always shows number in state color: projected % when available, current util % as fallback, em-dash only when expired, locked, or zero utilization.
 - Color hierarchy: Pace = state color (primary/orange/red). Now/Resets = `.secondary`/`.tertiary`.
 
@@ -70,7 +72,7 @@ Row labels (Pace/Now/Resets) on the left, 5h and 7d columns on the right. Pace r
 ## Local Storage
 
 All in `~/.tokenshepherd/`:
-- `history.jsonl` — utilization snapshots every 60s, pruned to 7 days
+- `history.jsonl` — utilization snapshots every 60s, pruned to 7 days. The `fiveHour*` keys are omitted when no 5h limit was reported.
 - `windows.jsonl` — summary of completed window cycles (peak, avg rate, was locked)
 
 No data leaves your machine except the API call to Anthropic.
@@ -80,12 +82,14 @@ No data leaves your machine except the API call to Anthropic.
 - **Fuzzy date matching:** API `resetsAt` oscillates by ~1s between fetches. All date comparisons use 60s tolerance.
 - **Sheep-only icon:** No text suffix in menu bar. Sheep emoji flipped via CGContext transform. Calm = `isTemplate: false` (plain emoji). Tinted = `.sourceAtop` blend at 60% alpha for vibrancy. Dead = flipped vertically + 50% alpha + red cross overlay.
 - **Worst-window icon:** Icon sheep reflects whichever window has highest severity. `ShepherdState.severity` property (-1=idle → 4=locked) determines ordering.
-- **Expired window handling:** Expired column shows "—" / "reset" muted. When both expired, hero shows "Standing by" + model label. Updates naturally when API sends fresh window.
+- **Expired window handling:** Expired column shows "—" / "reset" muted. When all expired, hero shows "Standing by" + model label ("No live reading" when blind). Updates naturally when API sends fresh window.
 - **Stale data preservation:** When token expires and refresh fails, keep showing last known quota data. On restart, bootstrap from last history entry. Only truly-no-data case (first ever launch + expired token) shows "Waiting for Claude."
 - **Dead sheep:** Locked column shows "LOCKED" + "back HH:MM" in red, pace shows em-dash. Icon shows inverted sheep at 50% opacity with red cross overlay for worst-window locked.
 - **Width:** 280px for hero content. Footer at 252px.
 - **Footer:** Sync status only ("Synced" when < 90s, "Synced Xm/Xh/Xd ago" when stale). Quaternary styling — metadata, not content. Stale data re-publishes every 60s to keep the label current.
-- **Blind vs needs-reconnect:** After 3 failed fetches the sheep gets a corner dot ("not live"). Dark dot = recovers on its own (offline, API down, waiting for Claude Code's token). Orange dot = Anthropic rejected our own login's refresh (4xx) — it won't recover; footer says "Login expired", the auth item becomes "Reconnect account…". Each failure streak and reason change is NSLogged with its HTTP status/body (`log show --predicate 'process == "TokenShepherd"'`).
+- **Blind vs needs-reconnect:** After 3 failed fetches the sheep gets a corner dot ("not live"). Dark dot = not live, and reconnecting the account won't help: offline or API down (footer "Can't reach Anthropic"), a reply we can't use (footer "Can't read Anthropic's reply" — needs a code fix, not a retry), or waiting for Claude Code's token. Orange dot = Anthropic rejected our own login's refresh (4xx) — it won't recover; footer says "Login expired", the auth item becomes "Reconnect account…".
+- **Logging:** `os.Logger` (`Log.swift`), never NSLog — the unified log redacts NSLog text to `<private>`, which hid every failure reason. Details are interpolated `privacy: .public` (never a token). Each failure streak and reason change is logged with its HTTP status/body or decode path: `/usr/bin/log show --predicate 'subsystem == "com.tokenshepherd.app"' --last 1d` (full path: in zsh, bare `log` is a builtin).
+- **Reading the reply (Ultra and every other plan):** Since 2026-10-31 the Ultra plan has no 5h limit; other plans keep it. An Ultra reply has `"five_hour": null` and no `session` entry in `limits[]`, even while the weekly climbs. Unreported (null or absent) → `QuotaData.fiveHour == nil`: no 5h column, icon follows the weekly. A plan change shows up on the next fetch, no setting needed. A reported window with a null `resets_at` (an idle session) still maps to "resets now". A reply is usable when it gives the weekly from `limits[weekly_all]` or `seven_day`; otherwise `mapResponse` throws and the footer says "Can't read Anthropic's reply". Which keys exist proves nothing. `resets_at` comes with and without fractional seconds. All pinned against real replies in `macos/Tests/` (`make test`).
 - **No Hardened Runtime, no entitlements:** Ad-hoc signed with plain `codesign --sign -`. Hardened Runtime and sandbox entitlements trigger ghost TCC prompts (Photos, Apple Music, network volume, Desktop) on non-notarized apps. Plain ad-hoc signature is sufficient.
 - **No subprocess spawning:** Token refresh was previously done by spawning `claude --print "hi"`, but macOS attributes child process TCC accesses to the parent. Claude CLI touches protected directories during init → Desktop/Photos/Music prompts blamed on TokenShepherd. Now we just wait — Claude Code refreshes its own token, we re-read the keychain next cycle.
 - **LaunchAgent via `open -W`:** `open` gives proper macOS app context (avoids TCC issues from direct binary launch). `-W` makes `open` wait for exit, so launchd can track it for `KeepAlive` (auto-restart on crash). Install order: `launchctl unload` → kill → remove → copy → load — must unload first or KeepAlive restarts mid-install.
