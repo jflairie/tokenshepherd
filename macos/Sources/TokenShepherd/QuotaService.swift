@@ -107,9 +107,13 @@ class QuotaService: ObservableObject {
     /// `health` change alone drives the UI, so backing off the poll can't freeze the signal.
     private func recordFailure(_ failure: FetchFailure) {
         // Log the first failure of a streak and every change of reason — enough to explain
-        // an outage after the fact without a line per 60s poll for days.
+        // an outage after the fact without a line per 60s poll for days. In numbered parts: a
+        // detail can carry a whole reply, and the log cuts each message at ~1 KB.
         if health.consecutiveFailures == 0 || health.lastFailureReason != failure.reason {
-            Logger.shepherd.error("fetch failed (\(String(describing: failure.reason), privacy: .public)): \(failure.detail, privacy: .public)")
+            let parts = Logger.parts(of: failure.detail)
+            for (i, part) in parts.enumerated() {
+                Logger.shepherd.error("fetch failed (\(String(describing: failure.reason), privacy: .public)) \(i + 1, privacy: .public)/\(parts.count, privacy: .public): \(part, privacy: .public)")
+            }
         }
         health.consecutiveFailures += 1
         health.lastFailureReason = failure.reason
@@ -147,7 +151,7 @@ class QuotaService: ObservableObject {
     }
 
     /// Why a fetch produced no live data. `reason` drives the UI; `detail` is for the log.
-    private struct FetchFailure: Error {
+    struct FetchFailure: Error {
         let reason: FetchFailureReason
         let detail: String
     }
@@ -161,16 +165,14 @@ class QuotaService: ObservableObject {
         }
 
         // 2. Fetch quota from API and map it to domain models
-        let quotaData: QuotaData
+        let body: Data
         do {
-            quotaData = try Self.mapResponse(try await APIService.fetchQuota(accessToken: activeToken))
-        } catch let error as DecodingError {
-            // Anthropic answered (HTTP 200) with a reply we can't use: not a network problem.
-            // `\(error)` names the field; localizedDescription ("…is missing.") doesn't.
-            return .failure(FetchFailure(reason: .unreadable, detail: "\(error)"))
+            body = try await APIService.fetchQuota(accessToken: activeToken)
         } catch {
             return .failure(FetchFailure(reason: .unreachable, detail: error.localizedDescription))
         }
+        let reply = Self.readReply(body)
+        guard case .success(let quotaData) = reply else { return reply }
 
         // 3. Append to history
         HistoryStore.append(from: quotaData)
@@ -245,6 +247,19 @@ class QuotaService: ObservableObject {
             weeklyScoped: nil,   // history doesn't store the per-model weekly
             fetchedAt: entry.ts
         )
+    }
+
+    /// Read Anthropic's 200 reply. One we can't use fails with its body in the detail: with no
+    /// disk cache, the log is the only record of what Anthropic sent.
+    static func readReply(_ body: Data) -> Result<QuotaData, FetchFailure> {
+        do {
+            return .success(try mapResponse(JSONDecoder().decode(APIQuotaResponse.self, from: body)))
+        } catch {
+            // Anthropic answered with a reply we can't use: not a network problem. `\(error)`
+            // names the field; localizedDescription ("…is missing.") doesn't.
+            let text = String(decoding: body, as: UTF8.self)
+            return .failure(FetchFailure(reason: .unreadable, detail: "\(error) — reply (\(body.count) bytes): \(text)"))
+        }
     }
 
     /// A reply is usable when it gives the weekly from some source; otherwise this throws, and

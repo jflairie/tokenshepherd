@@ -102,13 +102,27 @@ final class QuotaResponseTests: XCTestCase {
         XCTAssertEqual(quota.sevenDay.utilization, 0.03, accuracy: 0.0001)
     }
 
-    /// No weekly from any source: the reply is unusable and must fail loudly
-    /// ("Can't read Anthropic's reply"), not read as a quiet "Standing by".
-    func testReplyWithoutWeeklyIsUnreadable() throws {
-        let reply = try decode(#"{"five_hour": null, "seven_day": null, "limits": []}"#)
-        XCTAssertThrowsError(try QuotaService.mapResponse(reply)) { error in
-            XCTAssertTrue(error is DecodingError, "routes to .unreadable only as a DecodingError, got \(error)")
+    /// No weekly from any source, or a shape the decoder rejects: the reply is unusable and must
+    /// fail loudly ("Can't read Anthropic's reply"), not read as a quiet "Standing by". The
+    /// failure carries the body verbatim: with no disk cache, the log is the only trace of it.
+    func testUnreadableReplyFailsWithItsBody() {
+        let noWeekly = #"{"five_hour": null, "seven_day": null, "limits": []}"#
+        let wrongType = #"{"seven_day": {"utilization": "high"}}"#
+        for (body, cause) in [(noWeekly, "no weekly window"), (wrongType, "utilization")] {
+            guard case .failure(let failure) = QuotaService.readReply(Data(body.utf8)) else {
+                return XCTFail("read as usable: \(body)")
+            }
+            XCTAssertEqual(failure.reason, .unreadable)
+            XCTAssertTrue(failure.detail.contains(cause), "names what failed: \(failure.detail)")
+            XCTAssertTrue(failure.detail.hasSuffix("reply (\(body.utf8.count) bytes): \(body)"), failure.detail)
         }
+    }
+
+    func testUsableReplyReads() throws {
+        guard case .success(let quota) = QuotaService.readReply(Data(replyWithoutFiveHour.utf8)) else {
+            return XCTFail("a real Ultra reply must read")
+        }
+        XCTAssertEqual(quota.sevenDay.utilization, 0.02, accuracy: 0.0001)
     }
 
     /// history.jsonl: rows without a 5h window omit its keys; rows written before still read.

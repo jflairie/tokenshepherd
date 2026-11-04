@@ -33,6 +33,7 @@ make clean      # Clean Swift build artifacts
 - Never use `SecItemCopyMatching` — use `security find-generic-password` instead.
 - Never launch the binary directly in LaunchAgent — use `open -W` for proper macOS app context.
 - Never use `NSLog` — the unified log redacts its text to `<private>`. Use `Logger.shepherd` with `privacy: .public` (never on a token).
+- Never use `URLSession.shared` — use `URLSession.shepherd` (ephemeral). The shared session's disk cache stores the `Authorization` header in `~/Library/Caches/`.
 - Never skip `launchctl unload` before reinstalling — KeepAlive restarts the app mid-install.
 
 ## Architecture (Brief)

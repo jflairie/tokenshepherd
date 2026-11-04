@@ -96,7 +96,7 @@ Also removes the LaunchAgent (auto-start on login).
 
 Your data stays on your machine. No telemetry, no analytics, no tracking.
 
-TokenShepherd reads the OAuth token from your macOS Keychain and makes one API call to Anthropic every 60 seconds. That's it.
+TokenShepherd reads the OAuth token from your macOS Keychain and makes one API call to Anthropic every 60 seconds. That's it. The token stays in the Keychain: it's never written to an HTTP cache or a log.
 
 ## Architecture
 

@@ -1,6 +1,32 @@
 import Foundation
 import os
 
+extension URLSession {
+    /// For every call that sends or returns a token. Not `.shared`: its disk cache stored each
+    /// usage GET, `Authorization: Bearer` header included, in ~/Library/Caches/<bundle id>/Cache.db.
+    /// Ephemeral rather than `urlCache = nil`: one switch keeps the cache, cookies and credentials
+    /// in memory, where `urlCache = nil` would still write cookies to ~/Library/HTTPStorages.
+    static let shepherd = URLSession(configuration: .ephemeral)
+
+    /// Builds before `shepherd` used `.shared`, so this directory holds bearer tokens (Cache.db
+    /// and its WAL). Nothing writes there anymore: the first launch deletes it, later ones find
+    /// nothing.
+    static func removeOldDiskCache() {
+        guard let id = Bundle.main.bundleIdentifier,
+              let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
+        else { return }
+        let dir = caches.appendingPathComponent(id, isDirectory: true)
+        do {
+            try FileManager.default.removeItem(at: dir)
+            Logger.shepherd.notice("removed the old HTTP cache, which held bearer tokens: \(dir.path, privacy: .public)")
+        } catch CocoaError.fileNoSuchFile {
+            // Already gone: every launch after the first.
+        } catch {
+            Logger.shepherd.error("couldn't remove the old HTTP cache \(dir.path, privacy: .public): \(String(describing: error), privacy: .public)")
+        }
+    }
+}
+
 enum APIError: Error, LocalizedError {
     case httpError(Int, String)
     case networkError(String)
@@ -59,7 +85,7 @@ struct APIService {
 
         let (data, response): (Data, URLResponse)
         do {
-            (data, response) = try await URLSession.shared.data(for: request)
+            (data, response) = try await URLSession.shepherd.data(for: request)
         } catch {
             throw APIError.networkError(error.localizedDescription)
         }
@@ -76,7 +102,9 @@ struct APIService {
         return try JSONDecoder().decode(TokenResponse.self, from: data)
     }
 
-    static func fetchQuota(accessToken: String) async throws -> APIQuotaResponse {
+    /// The body of Anthropic's 200 usage reply. Reading it is `QuotaService.readReply`'s job, so
+    /// a reply it can't use still reaches the log whole.
+    static func fetchQuota(accessToken: String) async throws -> Data {
         var lastError: Error = APIError.networkError("No endpoints configured")
 
         for endpoint in quotaEndpoints {
@@ -92,7 +120,7 @@ struct APIService {
             let data: Data
             let response: URLResponse
             do {
-                (data, response) = try await URLSession.shared.data(for: request)
+                (data, response) = try await URLSession.shepherd.data(for: request)
             } catch {
                 lastError = APIError.networkError(error.localizedDescription)
                 continue
@@ -116,7 +144,7 @@ struct APIService {
                 throw APIError.httpError(httpResponse.statusCode, body)
             }
 
-            return try JSONDecoder().decode(APIQuotaResponse.self, from: data)
+            return data
         }
 
         throw lastError
